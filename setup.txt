@@ -1,0 +1,3 @@
+export PATH="/Applications/MiniZincIDE.app/Contents/Resources:$PATH"
+python3 generation/main.py --mode generated
+python3 generation/main.py --mode academic

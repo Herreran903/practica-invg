@@ -1,0 +1,29 @@
+# Archivos de configuración de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Directorios de entorno virtual
+venv/
+env/
+.venv/
+
+# --- MiniZinc / Job Shop Generation Output ---
+
+# Directorios de datos generados por los scripts de Python
+jsp_cnn_data_gen/
+jsp_cnn_data_mzn/
+jsp_cnn_data_mzn_academic/
+jsp_cnn_data_mzn_generated/
+
+# Archivos de salida específicos generados (Ground Truth y Features)
+*.csv     # Ignora los archivos CSV de ground truth (si están en la raíz, sino usa la ruta completa)
+*.dzn     # Archivos de datos de MiniZinc
+*.mzn.bak # Archivos temporales o de backup de MiniZinc
+*.npy     # Arrays de NumPy (las features de imagen para la CNN)
+
+# Directorios temporales del solver
+**/solver_logs_temp/
+
+.DS_Store
