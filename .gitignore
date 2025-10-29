@@ -17,6 +17,8 @@ jsp_cnn_data_mzn/
 jsp_cnn_data_mzn_academic/
 jsp_cnn_data_mzn_generated/
 
+training_reports/
+
 # Archivos de salida específicos generados (Ground Truth y Features)
 *.csv     # Ignora los archivos CSV de ground truth (si están en la raíz, sino usa la ruta completa)
 *.dzn     # Archivos de datos de MiniZinc

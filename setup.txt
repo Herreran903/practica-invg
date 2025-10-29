@@ -1,3 +1,11 @@
 export PATH="/Applications/MiniZincIDE.app/Contents/Resources:$PATH"
 python3 generation/main.py --mode generated
 python3 generation/main.py --mode academic
+
+
+python3 training/train.py \
+  --csv jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv \
+  --task classification \
+  --epochs 30 \
+  --folds 5 \
+  --batch_size 64

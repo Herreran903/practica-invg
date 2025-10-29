@@ -7,6 +7,10 @@ from typing import Any, Dict, List
 
 import numpy as np
 
+# =========================
+#   CONFIGURACIÓN GENERAL
+# =========================
+
 OUTPUT_DIR = "jsp_cnn_data_gen"
 try:
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -15,7 +19,17 @@ except OSError as e:
         f"❌ ERROR: No se pudo crear el directorio de salida {OUTPUT_DIR}. Detalles: {e}"
     )
 
-MODEL_MZN_PATH = "generation/model.mzn"
+# --- Modelos por paradigma ---
+CP_MODEL_MZN_PATH = "generation/model.mzn"  # CP / LCG / CP-SAT (disyuntivo)
+MIP_MODEL_MZN_PATH = (
+    "generation/model_linear.mzn"  # MIP (lineal). Si no existe, pon None.
+)
+
+# --- Límites y seeds ---
+TIME_LIMITS_MS = [5000, 30000, 60000]  # 5s, 30s, 60s
+RANDOM_SEEDS = [1, 2, 3]
+
+# (Compatibilidad con funciones que esperan estas constantes)
 TIME_LIMIT_MS = 60000
 TIME_LIMIT_S = TIME_LIMIT_MS / 1000
 
@@ -27,17 +41,72 @@ except OSError as e:
         f"❌ ERROR: No se pudo crear el directorio de logs temporal {LOG_DIR}. Detalles: {e}"
     )
 
-SOLVER_STRATEGIES = [
-    ("gecode", "input_order", "GECODE_DEFAULT"),
-    ("chuffed", "input_order", "CHUFFED_DEFAULT"),
+# Candidatos (se filtrarán por disponibilidad y modelo)
+# id (--solver), key (etiqueta), type ("cp" o "mip"), opts
+SOLVER_CANDIDATES = [
+    (
+        "gecode",
+        "GECODE_FF",
+        "cp",
+        {"strategy": "first_fail", "supports_seed": True, "inject_search": True},
+    ),
+    (
+        "chuffed",
+        "CHUFFED_IO",
+        "cp",
+        {"strategy": "input_order", "supports_seed": True, "inject_search": True},
+    ),
+    (
+        "cp-sat",
+        "CPSAT_FF",
+        "cp",
+        {"strategy": "first_fail", "supports_seed": True, "inject_search": True},
+    ),
+    (
+        "coin-bc",
+        "CBC_DEF",
+        "mip",
+        {"strategy": None, "supports_seed": False, "inject_search": False},
+    ),
+    (
+        "scip",
+        "SCIP_DEF",
+        "mip",
+        {"strategy": None, "supports_seed": False, "inject_search": False},
+    ),
+    (
+        "highs",
+        "HIGHS_DEF",
+        "mip",
+        {"strategy": None, "supports_seed": False, "inject_search": False},
+    ),
+    (
+        "cplex",
+        "CPLEX_DEF",
+        "mip",
+        {"strategy": None, "supports_seed": False, "inject_search": False},
+    ),
+    (
+        "gurobi",
+        "GUROBI_DEF",
+        "mip",
+        {"strategy": None, "supports_seed": False, "inject_search": False},
+    ),
 ]
 
+# Generación de instancias
 GENERATION_CASES = [
     (4, 4, 5),
+    (6, 6, 5),
     (8, 8, 5),
-    (12, 12, 5),
-    (15, 15, 5),
+    (10, 10, 5),
+    # (12, 12, 5),
+    # (15, 15, 5),
 ]
+
+# =========================
+#   IMPORTS DE LIBRERÍA
+# =========================
 
 try:
     from job_shop_lib import JobShopInstance
@@ -49,7 +118,50 @@ except ImportError as e:
     ) from e
 
 
+# =========================
+#   UTILIDADES MINI-ZINC
+# =========================
+
+
+def _list_available_solver_ids() -> List[str]:
+    """Devuelve ids detectados por `minizinc --solvers` en minúscula."""
+    try:
+        out = subprocess.run(
+            ["minizinc", "--solvers"], capture_output=True, text=True, timeout=10
+        )
+        text = out.stdout.lower()
+    except Exception:
+        text = ""
+    found = set()
+    for sid, _, _, _ in SOLVER_CANDIDATES:
+        if sid in text:
+            found.add(sid)
+    return list(found)
+
+
+def build_solver_configs() -> List[tuple]:
+    """
+    Filtra candidatos por disponibilidad y por modelo (CP vs MIP).
+    Devuelve lista de tuplas: (solver_id, key, type, opts)
+    """
+    available = set(_list_available_solver_ids())
+    configs = []
+    for sid, key, stype, opts in SOLVER_CANDIDATES:
+        if sid not in available:
+            continue
+        if stype == "mip" and not MIP_MODEL_MZN_PATH:
+            # No hay modelo lineal → saltamos MIP
+            continue
+        configs.append((sid, key, stype, opts))
+    if not configs:
+        raise RuntimeError(
+            "No hay solvers utilizables (revisa instalación o rutas de modelo)."
+        )
+    return configs
+
+
 def save_instance_dzn(instance_obj: JobShopInstance, instance_name: str) -> str:
+    """Convierte JobShopInstance a DZN plano para MiniZinc."""
     dzn_path = os.path.join(OUTPUT_DIR, f"{instance_name}.dzn")
 
     proc_time_rows = []
@@ -71,8 +183,7 @@ def save_instance_dzn(instance_obj: JobShopInstance, instance_name: str) -> str:
                     raise AttributeError(
                         f"Estructura inesperada para la máquina en operación {op}."
                     )
-
-                mach_row.append(machine_id_0_based + 1)
+                mach_row.append(machine_id_0_based + 1)  # máquinas 1..M
 
             proc_time_rows.append(pt_row)
             machine_of_op_rows.append(mach_row)
@@ -104,101 +215,192 @@ def save_instance_dzn(instance_obj: JobShopInstance, instance_name: str) -> str:
 
 
 def parse_minizinc_stats(mzn_text: str) -> Dict[str, Any]:
-    """Extrae el Makespan (END) y el runtime."""
-    stats = {"makespan": float("inf"), "runtime": TIME_LIMIT_S}
-
+    """Extrae Makespan (END) y runtime desde la salida de MiniZinc."""
+    stats = {"makespan": float("inf"), "runtime": TIME_LIMIT_S, "had_time_tag": False}
     try:
         all_makespans = re.findall(r"END=\s*(\d+)", mzn_text)
-
         if all_makespans:
-            best_makespan = min(float(m) for m in all_makespans)
-            stats["makespan"] = best_makespan
+            stats["makespan"] = min(float(m) for m in all_makespans)
 
-        t = re.search(r"%%%mzn-stat: solveTime=([0-9\.]+)", mzn_text)
+        t = re.search(r"%%%mzn-stat:\s*solveTime=([0-9\.]+)", mzn_text)
         if not t:
-            t = re.search(r"%%%mzn-stat: time=([0-9\.]+)", mzn_text)
+            t = re.search(r"%%%mzn-stat:\s*time=([0-9\.]+)", mzn_text)
 
-        stats["runtime"] = float(t.group(1)) if t else TIME_LIMIT_S
+        if t:
+            stats["runtime"] = float(t.group(1))
+            stats["had_time_tag"] = True
+
         stats["solved_binary"] = 1 if stats["makespan"] < float("inf") else 0
     except Exception as e:
-        print(f"❌ ERROR: Fallo al parsear las estadísticas de MiniZinc. Detalles: {e}")
+        print(f"❌ ERROR: Fallo al parsear estadísticas de MiniZinc. Detalles: {e}")
         stats["runtime"] = TIME_LIMIT_S
         stats["solved_binary"] = 0
-
+        stats["had_time_tag"] = False
     return stats
 
 
-def execute_minizinc_solver(
-    solver: str, strategy: str, dzn_path: str
-) -> Dict[str, Any]:
-    """Ejecuta un solver de MiniZinc, INYECTANDO una heurística simple para forzar la búsqueda."""
-
-    mzn_content = ""
+def _patch_model_if_needed(
+    model_path: str, inject: bool, strategy: str, tmp_out_path: str
+) -> str:
+    """
+    Para CP/LCG/CP-SAT: inyecta una búsqueda simple reemplazando la línea solve por:
+    solve :: int_search(S_FLAT, {strategy}, indomain_min, complete) minimize END_MAKESPAN;
+    Para MIP o cuando no se desea inyectar, copia tal cual.
+    """
     try:
-        with open(MODEL_MZN_PATH, "r") as f:
-            mzn_content = f.read()
+        with open(model_path, "r") as f:
+            mzn = f.read()
     except FileNotFoundError:
         raise RuntimeError(
-            f"FATAL ERROR: No se encontró el modelo MiniZinc en la ruta: {MODEL_MZN_PATH}"
+            f"FATAL ERROR: No se encontró el modelo en la ruta: {model_path}"
         )
 
-    solve_line_original = re.search(
-        r"^\s*solve\s+minimize\s+END_MAKESPAN\s*;", mzn_content, re.MULTILINE
-    )
+    if inject and strategy:
+        m = re.search(r"^\s*solve\s+minimize\s+END_MAKESPAN\s*;", mzn, re.MULTILINE)
+        if m:
+            repl = f"solve :: int_search(S_FLAT, {strategy}, indomain_min, complete) minimize END_MAKESPAN;"
+            mzn = mzn.replace(m.group(0), repl)
 
-    if solve_line_original:
-        solve_template = f"solve :: int_search(S_FLAT, {strategy}, indomain_min, complete) minimize END_MAKESPAN;"
-        mzn_patched = mzn_content.replace(solve_line_original.group(0), solve_template)
-    else:
-        mzn_patched = mzn_content
-
-    tmp_mzn_path = os.path.join(LOG_DIR, f"_temp_{solver}_{strategy}.mzn")
     try:
-        with open(tmp_mzn_path, "w") as f:
-            f.write(mzn_patched)
+        with open(tmp_out_path, "w") as f:
+            f.write(mzn)
     except Exception as e:
         raise RuntimeError(
-            f"❌ ERROR: Fallo al escribir el modelo temporal {tmp_mzn_path}. Detalles: {e}"
+            f"❌ ERROR: Fallo al escribir modelo temporal {tmp_out_path}. Detalles: {e}"
         )
+    return tmp_out_path
+
+
+def execute_minizinc_solver_generic(
+    solver_id: str,
+    key: str,
+    stype: str,
+    opts: Dict[str, Any],
+    dzn_path: str,
+    time_limit_ms: int,
+    seed: int,
+) -> Dict[str, Any]:
+    """
+    Ejecuta un solver (CP o MIP) con el modelo adecuado, inyectando búsqueda y seed solo si procede.
+    Devuelve dict con makespan, runtime (MiniZinc), wall_time_s, solved_binary y metadatos.
+    """
+    time_limit_s = time_limit_ms / 1000.0
+    is_cp = stype == "cp"
+    inject = bool(opts.get("inject_search", False))
+    strat = opts.get("strategy")
+    use_seed = bool(opts.get("supports_seed", False))
+
+    # Modelo según paradigma
+    model_path = CP_MODEL_MZN_PATH if is_cp else MIP_MODEL_MZN_PATH
+    if not model_path or not os.path.exists(model_path):
+        # cuando MIP no está disponible, devolvemos "no resuelto"
+        return {
+            "makespan": float("inf"),
+            "runtime": time_limit_s,
+            "wall_time_s": 0.0,
+            "solved_binary": 0,
+        }
+
+    # Parche temporal (o copia tal cual)
+    tmp_mzn = os.path.join(LOG_DIR, f"__tmp_{key}_seed{seed}_T{time_limit_ms}.mzn")
+    patched_path = _patch_model_if_needed(model_path, inject and is_cp, strat, tmp_mzn)
+
+    extra = []
+    if solver_id == "cplex":
+        dll = os.environ.get("CPLEX_DLL") or os.path.join(
+            os.environ.get("CPLEX_STUDIO_DIR", "/Applications/CPLEX_Studio2211"),
+            "cplex", "bin", "arm64_osx", "libcplex.dylib"
+        )
+        if os.path.exists(dll):
+            extra += ["--cplex-dll", dll]
+    elif solver_id == "highs":
+        dll = os.environ.get("HIGHS_DLL") or "/opt/homebrew/opt/highs/lib/libhighs.dylib"
+        if os.path.exists(dll):
+            extra += ["--highs-dll", dll]
 
     cmd = [
         "minizinc",
         "--solver",
-        solver,
+        solver_id,
         "--statistics",
         "--time-limit",
-        str(TIME_LIMIT_MS),
-        tmp_mzn_path,
+        str(time_limit_ms),
+        patched_path,
         dzn_path,
     ]
 
-    stdout = ""
+    if extra:
+        cmd[1:1] = extra
+    # semilla sólo para CP/LCG/CP-SAT que la soporten
+    if is_cp and use_seed:
+        cmd[1:1] = ["--random-seed", str(seed)]  # inserta tras "minizinc"
+
+    t0 = time.time()
     try:
         proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=TIME_LIMIT_S + 5
+            cmd, capture_output=True, text=True, timeout=time_limit_s + 10
         )
         stdout = proc.stdout
-        os.unlink(tmp_mzn_path)
+        stderr = proc.stderr
+        ret = proc.returncode
     except subprocess.TimeoutExpired:
-        stdout = f"%%%mzn-stat: solveTime={TIME_LIMIT_S}\n"
+        stdout = f"%%%mzn-stat: solveTime={time_limit_s}\n"
+        stderr = ""
+        ret = 124  # típico timeout
     except FileNotFoundError:
         raise RuntimeError(
-            f"FATAL ERROR: MiniZinc no encontrado. Asegúrate de que esté en tu PATH."
+            "FATAL ERROR: MiniZinc no encontrado. Asegúrate de que esté en tu PATH."
+        )
+    finally:
+        wall = time.time() - t0
+        try:
+            os.unlink(patched_path)
+        except Exception:
+            pass
+
+    stats = parse_minizinc_stats(stdout)
+
+    # Si NO hubo tag de tiempo y el wall es muy inferior al cap, usa wall.
+    if not stats.get("had_time_tag", False):
+        stats["runtime"] = min(stats.get("runtime", TIME_LIMIT_S), wall)
+
+    # Adjunta metadatos útiles para depurar
+    stats.update(
+        {
+            "solver": solver_id,
+            "key": key,
+            "type": stype,
+            "time_limit_s": time_limit_s,
+            "seed": seed,
+            "wall_time_s": wall,
+            "returncode": ret,
+        }
+    )
+
+    # Log suave si el solver terminó rápido sin tag de tiempo o con error
+    if (not stats.get("had_time_tag", False)) or (ret != 0):
+        err_snip = (stderr or "").strip().splitlines()
+        err_snip = " | ".join(err_snip[:3])[:200]  # primeras líneas, truncado
+        print(
+            f"     ⚠️ nota: ret={ret}, had_time_tag={stats['had_time_tag']}, stderr='{err_snip}'"
         )
 
-    return parse_minizinc_stats(stdout)
+    return stats
+
+
+# =========================
+#   PIPELINE PRINCIPAL
+# =========================
 
 
 def prepare_data_and_ground_truth_minizinc_gen():
-    """Genera instancias aleatorias de JSP y ejecuta el pipeline de MiniZinc."""
-
+    """Genera instancias aleatorias de JSP y ejecuta el pipeline de MiniZinc con diversidad de solvers/tiempos/seeds."""
     all_instances: List[JobShopInstance] = []
 
     print("--- 1. Generando Instancias JSP Balanceadas ---")
-
-    instance_count = 0
     generator = GeneralInstanceGenerator(duration_range=(1, 20), seed=42)
 
+    instance_count = 0
     for jobs, machines, count in GENERATION_CASES:
         for i in range(count):
             instance_obj = generator.generate(num_jobs=jobs, num_machines=machines)
@@ -209,23 +411,28 @@ def prepare_data_and_ground_truth_minizinc_gen():
     print(f"✅ Generadas un total de {instance_count} instancias.")
     print("-" * 50)
 
-    solver_keys = [name for _, _, name in SOLVER_STRATEGIES]
+    # Construye la lista de configuraciones utilizables en esta máquina
+    SOLVER_CONFIGS = build_solver_configs()
+    config_keys = [key for (_, key, _, _) in SOLVER_CONFIGS]
 
-    csv_rows = [
-        [
-            "Instance_Name",
-            "Raw_Text_Path",
-            "N_Jobs",
-            "N_Machines",
-            "Best_Makespan_Found",
-        ]
-        + [f"{s}_Runtime_s" for s in solver_keys]
+    # Cabecera del CSV
+    header = [
+        "Instance_Name",
+        "Raw_Text_Path",
+        "N_Jobs",
+        "N_Machines",
+        "Time_Limit_s",
+        "Seed",
+        "Winner_Key",
     ]
+    for key in config_keys:
+        header += [f"{key}_Runtime_s", f"{key}_Makespan", f"{key}_Wall_s"]
+    csv_rows = [header]
 
+    # Recorre instancias
     for index, instance_obj in enumerate(all_instances):
-        start_time = time.time()
         name = instance_obj.name
-
+        print(f"--------------------------------------------------")
         print(
             f"🚀 Procesando Instancia {index + 1}/{instance_count}: {name} ({instance_obj.num_jobs}x{instance_obj.num_machines})"
         )
@@ -234,59 +441,70 @@ def prepare_data_and_ground_truth_minizinc_gen():
             dzn_path = save_instance_dzn(instance_obj, name)
             raw_text_path = dzn_path
 
-            all_results = {}
-            best_makespan = float("inf")
-            total_solver_time = 0.0
+            for T_ms in TIME_LIMITS_MS:
+                T_s = T_ms / 1000.0
+                for seed in RANDOM_SEEDS:
+                    print(f"── Bloque @ {int(T_s)}s, seed={seed}")
+                    results: Dict[str, Dict[str, Any]] = {}
 
-            for solver, strategy, key in SOLVER_STRATEGIES:
-                solver_start_time = time.time()
-                print(f"  -> Ejecutando Solver {key}...")
-                stats = execute_minizinc_solver(solver, strategy, dzn_path)
-                solver_end_time = time.time()
+                    for solver_id, key, stype, opts in SOLVER_CONFIGS:
+                        print(f"  -> {key} @ {int(T_s)}s seed={seed}")
+                        stats = execute_minizinc_solver_generic(
+                            solver_id, key, stype, opts, dzn_path, T_ms, seed
+                        )
+                        results[key] = stats
+                        mk = (
+                            "inf"
+                            if stats["makespan"] == float("inf")
+                            else f"{int(stats['makespan'])}"
+                        )
+                        print(
+                            f"     • solved={stats['solved_binary']}  makespan={mk}  "
+                            f"runtime={stats['runtime']:.3f}s  wall={stats['wall_time_s']:.3f}s"
+                        )
 
-                runtime_s = stats["runtime"]
+                    # Ganador entre los que resolvieron: menor runtime
+                    solved_keys = [
+                        k for k, s in results.items() if s.get("solved_binary", 0) == 1
+                    ]
+                    winner_key = (
+                        min(solved_keys, key=lambda k: results[k]["runtime"])
+                        if solved_keys
+                        else "NONE"
+                    )
 
-                print(f"     - Tiempo MiniZinc (Reportado): {runtime_s:.3f}s")
-                print(
-                    f"     - Tiempo de Ejecución (Wall-Time): {(solver_end_time - solver_start_time):.3f}s"
-                )
+                    # Resumen del bloque
+                    if solved_keys:
+                        best_key = min(solved_keys, key=lambda k: results[k]["runtime"])
+                        best_rt = results[best_key]["runtime"]
+                        print(
+                            f"  ⇒ Resumen: Winner={winner_key} | solved={len(solved_keys)}/{len(SOLVER_CONFIGS)} | best_runtime={best_rt:.3f}s"
+                        )
+                    else:
+                        print(
+                            f"  ⇒ Resumen: Winner=NONE | solved=0/{len(SOLVER_CONFIGS)}"
+                        )
 
-                all_results[key] = stats
+                    row = [
+                        name,
+                        raw_text_path,
+                        instance_obj.num_jobs,
+                        instance_obj.num_machines,
+                        f"{T_s:.0f}",
+                        seed,
+                        winner_key,
+                    ]
+                    for key in config_keys:
+                        st = results[key]
+                        ms = st["makespan"] if st["makespan"] != float("inf") else "inf"
+                        row += [f"{st['runtime']:.3f}", ms, f"{st['wall_time_s']:.3f}"]
+                    csv_rows.append(row)
 
-                if stats["makespan"] < best_makespan:
-                    best_makespan = stats["makespan"]
-
-                total_solver_time += runtime_s
-
-            row = [
-                name,
-                raw_text_path,
-                instance_obj.num_jobs,
-                instance_obj.num_machines,
-                best_makespan if best_makespan != float("inf") else "inf",
-            ]
-
-            row.extend([f"{all_results[key]['runtime']:.3f}" for key in solver_keys])
-
-            csv_rows.append(row)
-
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-
-            print(
-                f"✅ Instancia {name} Finalizada. Makespan Óptimo/Mejor Encontrado: {row[4]}. "
-                f"Tiempo Total (Wall-Time): {elapsed_time:.3f}s. "
-                f"Tiempo de Solvers (Sumado): {total_solver_time:.3f}s."
-            )
-            print("-" * 50)
-
+            print("  ✅ OK")
         except Exception as e:
-            end_time = time.time()
-            elapsed_time = end_time - start_time
             print(f"❌ ERROR fatal al procesar instancia {name}. Detalles: {e}")
-            print(f"Tiempo Transcurrido hasta el fallo: {elapsed_time:.3f}s.")
-            print("-" * 50)
 
+    # Escribir CSV
     csv_path = os.path.join(OUTPUT_DIR, "ground_truth_jsp_generated_dataset.csv")
     try:
         with open(csv_path, "w", newline="") as f:
@@ -297,5 +515,12 @@ def prepare_data_and_ground_truth_minizinc_gen():
         raise RuntimeError(
             f"❌ ERROR: Fallo al escribir el archivo CSV {csv_path}. Detalles: {e}"
         )
-
     return csv_path
+
+
+# =========================
+#   MAIN
+# =========================
+
+if __name__ == "__main__":
+    prepare_data_and_ground_truth_minizinc_gen()
