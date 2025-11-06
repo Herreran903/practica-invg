@@ -16,6 +16,9 @@ jsp_cnn_data_gen/
 jsp_cnn_data_mzn/
 jsp_cnn_data_mzn_academic/
 jsp_cnn_data_mzn_generated/
+out/
+aslib/
+instances/
 
 training_reports/
 

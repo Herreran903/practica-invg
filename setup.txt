@@ -9,3 +9,12 @@ python3 training/train.py \
   --epochs 30 \
   --folds 5 \
   --batch_size 64
+
+python3 generation_sat/main.py \
+  --mode aslib \
+  --scenario_dir ~/aslib/SAT12-INDU \
+  --instances_dir ~/datasets/cnf \
+  --timeout_s 5000 \
+  --out_csv out/sat12_indu_dataset.csv
+
+  python visualizador.py jsp_cnn_data_gen/GEN_12x12_2_image.npy

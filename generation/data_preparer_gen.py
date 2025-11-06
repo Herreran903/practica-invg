@@ -1,3 +1,20 @@
+# ==============================================
+# data_preparer_gen.py — Generación aleatoria + benchmarking MiniZinc
+# ------------------------------------------------
+# Propósito:
+#   - Generar instancias JSP balanceadas (N×M) con job-shop-lib.
+#   - Convertir cada instancia a .dzn para MiniZinc.
+#   - Ejecutar múltiples solvers/configs (CP y MIP), tiempos y seeds.
+#   - Parsear estadísticas (makespan, runtime, wall) y elegir ganador por bloque.
+#   - Guardar un CSV con métricas por solver y bloque (T, seed).
+# Uso:
+#   python -m generation.data_preparer_gen
+# Requisitos:
+#   - MiniZinc en PATH; modelos en generation/model*.mzn.
+#   - job-shop-lib instalado.
+#   - NumPy (para utilidades y guardado), Pandas (solo en image_converter), etc.
+# ==============================================
+
 import csv
 import os
 import re
@@ -94,7 +111,7 @@ SOLVER_CANDIDATES = [
     ),
 ]
 
-# Generación de instancias
+# Generación de instancias (jobs, machines, count por tamaño)
 GENERATION_CASES = [
     (4, 4, 5),
     (6, 6, 5),
@@ -124,7 +141,9 @@ except ImportError as e:
 
 
 def _list_available_solver_ids() -> List[str]:
-    """Devuelve ids detectados por `minizinc --solvers` en minúscula."""
+    """Devuelve ids detectados por `minizinc --solvers` en minúscula.
+    Si el comando falla, retorna lista vacía (se filtrará después).
+    """
     try:
         out = subprocess.run(
             ["minizinc", "--solvers"], capture_output=True, text=True, timeout=10
@@ -141,8 +160,8 @@ def _list_available_solver_ids() -> List[str]:
 
 def build_solver_configs() -> List[tuple]:
     """
-    Filtra candidatos por disponibilidad y por modelo (CP vs MIP).
-    Devuelve lista de tuplas: (solver_id, key, type, opts)
+    Filtra SOLVER_CANDIDATES por disponibilidad en esta máquina y por modelo requerido.
+    Retorna lista de tuplas (solver_id, key, type, opts) listas para ejecución.
     """
     available = set(_list_available_solver_ids())
     configs = []
@@ -161,7 +180,9 @@ def build_solver_configs() -> List[tuple]:
 
 
 def save_instance_dzn(instance_obj: JobShopInstance, instance_name: str) -> str:
-    """Convierte JobShopInstance a DZN plano para MiniZinc."""
+    """Convierte JobShopInstance a DZN plano para MiniZinc.
+    Escribe JOBS, MACHINES, PROC_TIME (duraciones) y MACHINE_OF_OP (máquinas).
+    """
     dzn_path = os.path.join(OUTPUT_DIR, f"{instance_name}.dzn")
 
     proc_time_rows = []
@@ -215,7 +236,10 @@ def save_instance_dzn(instance_obj: JobShopInstance, instance_name: str) -> str:
 
 
 def parse_minizinc_stats(mzn_text: str) -> Dict[str, Any]:
-    """Extrae Makespan (END) y runtime desde la salida de MiniZinc."""
+    """
+    Extrae Makespan (END) y runtime desde la salida de MiniZinc.
+    Retorna dict con: makespan, runtime, had_time_tag, solved_binary.
+    """
     stats = {"makespan": float("inf"), "runtime": TIME_LIMIT_S, "had_time_tag": False}
     try:
         all_makespans = re.findall(r"END=\s*(\d+)", mzn_text)
@@ -243,9 +267,9 @@ def _patch_model_if_needed(
     model_path: str, inject: bool, strategy: str, tmp_out_path: str
 ) -> str:
     """
-    Para CP/LCG/CP-SAT: inyecta una búsqueda simple reemplazando la línea solve por:
-    solve :: int_search(S_FLAT, {strategy}, indomain_min, complete) minimize END_MAKESPAN;
-    Para MIP o cuando no se desea inyectar, copia tal cual.
+    Para modelos CP/LCG/CP-SAT: si 'inject' es True, reemplaza la línea de solve
+    por una variante con búsqueda explícita (int_search) usando la 'strategy' dada.
+    Para MIP o si no se desea inyección, copia el modelo tal cual a 'tmp_out_path'.
     """
     try:
         with open(model_path, "r") as f:
@@ -258,7 +282,9 @@ def _patch_model_if_needed(
     if inject and strategy:
         m = re.search(r"^\s*solve\s+minimize\s+END_MAKESPAN\s*;", mzn, re.MULTILINE)
         if m:
-            repl = f"solve :: int_search(S_FLAT, {strategy}, indomain_min, complete) minimize END_MAKESPAN;"
+            repl = (
+                f"solve :: int_search(S_FLAT, {strategy}, indomain_min, complete) minimize END_MAKESPAN;"
+            )
             mzn = mzn.replace(m.group(0), repl)
 
     try:
@@ -281,8 +307,8 @@ def execute_minizinc_solver_generic(
     seed: int,
 ) -> Dict[str, Any]:
     """
-    Ejecuta un solver (CP o MIP) con el modelo adecuado, inyectando búsqueda y seed solo si procede.
-    Devuelve dict con makespan, runtime (MiniZinc), wall_time_s, solved_binary y metadatos.
+    Ejecuta un solver (CP o MIP) con el modelo correcto, inyectando búsqueda y seed
+    solo cuando aplica. Retorna estadísticas parseadas + metadatos (solver, key, etc.).
     """
     time_limit_s = time_limit_ms / 1000.0
     is_cp = stype == "cp"
@@ -293,7 +319,7 @@ def execute_minizinc_solver_generic(
     # Modelo según paradigma
     model_path = CP_MODEL_MZN_PATH if is_cp else MIP_MODEL_MZN_PATH
     if not model_path or not os.path.exists(model_path):
-        # cuando MIP no está disponible, devolvemos "no resuelto"
+        # Cuando MIP no está disponible, devolvemos un resultado 'no resuelto'.
         return {
             "makespan": float("inf"),
             "runtime": time_limit_s,
@@ -305,6 +331,7 @@ def execute_minizinc_solver_generic(
     tmp_mzn = os.path.join(LOG_DIR, f"__tmp_{key}_seed{seed}_T{time_limit_ms}.mzn")
     patched_path = _patch_model_if_needed(model_path, inject and is_cp, strat, tmp_mzn)
 
+    # Soporte de librerías dinámicas para ciertos solvers (macOS ARM típico)
     extra = []
     if solver_id == "cplex":
         dll = os.environ.get("CPLEX_DLL") or os.path.join(
@@ -318,6 +345,7 @@ def execute_minizinc_solver_generic(
         if os.path.exists(dll):
             extra += ["--highs-dll", dll]
 
+    # Construcción del comando MiniZinc
     cmd = [
         "minizinc",
         "--solver",
@@ -330,10 +358,10 @@ def execute_minizinc_solver_generic(
     ]
 
     if extra:
-        cmd[1:1] = extra
-    # semilla sólo para CP/LCG/CP-SAT que la soporten
+        cmd[1:1] = extra  # Inserta justo después de 'minizinc'
+    # Semilla solo para CP/LCG/CP-SAT que la soporten
     if is_cp and use_seed:
-        cmd[1:1] = ["--random-seed", str(seed)]  # inserta tras "minizinc"
+        cmd[1:1] = ["--random-seed", str(seed)]
 
     t0 = time.time()
     try:
@@ -394,7 +422,18 @@ def execute_minizinc_solver_generic(
 
 
 def prepare_data_and_ground_truth_minizinc_gen():
-    """Genera instancias aleatorias de JSP y ejecuta el pipeline de MiniZinc con diversidad de solvers/tiempos/seeds."""
+    """
+    Genera instancias aleatorias de JSP y ejecuta MiniZinc con múltiples solvers,
+    tiempos límite (5/30/60s) y semillas (1,2,3). Para cada bloque (T, seed):
+      - Ejecuta todas las configs disponibles.
+      - Marca 'Winner_Key' como el solver resuelto con menor runtime.
+
+    CSV de salida:
+      Instance_Name, Raw_Text_Path, N_Jobs, N_Machines, Time_Limit_s, Seed,
+      Winner_Key, y por cada key: _Runtime_s, _Makespan, _Wall_s.
+
+    Devuelve: ruta al CSV generado en OUTPUT_DIR.
+    """
     all_instances: List[JobShopInstance] = []
 
     print("--- 1. Generando Instancias JSP Balanceadas ---")
@@ -468,9 +507,7 @@ def prepare_data_and_ground_truth_minizinc_gen():
                         k for k, s in results.items() if s.get("solved_binary", 0) == 1
                     ]
                     winner_key = (
-                        min(solved_keys, key=lambda k: results[k]["runtime"])
-                        if solved_keys
-                        else "NONE"
+                        min(solved_keys, key=lambda k: results[k]["runtime"]) if solved_keys else "NONE"
                     )
 
                     # Resumen del bloque
