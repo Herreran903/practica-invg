@@ -3,18 +3,133 @@ python3 generation/main.py --mode generated
 python3 generation/main.py --mode academic
 
 
-python3 training/train.py \
+python3 training_jsp/train.py \
   --csv jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv \
   --task classification \
   --epochs 30 \
-  --folds 5 \
-  --batch_size 64
+  --folds 5
+
+==================
 
 python3 generation_sat/main.py \
-  --mode aslib \
-  --scenario_dir ~/aslib/SAT12-INDU \
-  --instances_dir ~/datasets/cnf \
-  --timeout_s 5000 \
-  --out_csv out/sat12_indu_dataset.csv
+  --scenario_dir generation_sat/aslib/sc2012-application \
+  --instances_dir generation_sat/instances/sc2012-application
 
-  python visualizador.py jsp_cnn_data_gen/GEN_12x12_2_image.npy
+python3 generation_sat/main.py \
+  --scenario_dir generation_sat/aslib/sc2012-hard-combinatorial \
+  --instances_dir generation_sat/instances/sc2012-hard-combinatorial
+
+python3 generation_sat/main.py \
+  --scenario_dir generation_sat/aslib/sc2012-random \
+  --instances_dir generation_sat/instances/sc2012-random
+
+python3 generation_sat/main.py \
+  --scenario_dir generation_sat/aslib/sc2012-all \
+  --instances_dir generation_sat/instances
+
+python3 training_sat/train.py \
+  --csv sat_cnn_data_gen_app/ground_truth_aslib.csv \
+  --task classification \
+  --epochs 15 \
+  --folds 5 \
+  --solvers clasp1,clasp2,cryptominisat2011,glucose2,glueminisat,lingeling,minisatpsm,tnm
+
+python3 training_sat/train.py \
+  --csv sat_cnn_data_gen_hard/ground_truth_aslib.csv \
+  --task classification \
+  --epochs 15 \
+  --folds 5 \
+  --solvers clasp1,clasp2,cryptominisat2011,glucose2,glueminisat,lingeling,minisatpsm,tnm
+
+python3 training_sat/train.py \
+  --csv sat_cnn_data_gen_rand/ground_truth_aslib.csv \
+  --task classification \
+  --epochs 15 \
+  --folds 5 \
+  --solvers clasp1,clasp2,cryptominisat2011,glucose2,glueminisat,lingeling,minisatpsm,tnm
+
+python3 training_sat/train.py \
+  --csv sat_cnn_data_gen_all/ground_truth_aslib.csv \
+  --task classification \
+  --epochs 15 \
+  --folds 5 \
+  --solvers clasp1,clasp2,cryptominisat2011,glucose2,glueminisat,lingeling,minisatpsm,tnm
+
+python3 training_sat/train.py \
+  --csv sat_cnn_data_gen/ground_truth_aslib.csv \
+  --task classification \
+  --epochs 100 \
+  --batch_size 128 \
+  --folds 5 \
+  --solvers clasp1,clasp2,cryptominisat2011,glucose2,glueminisat,lingeling,minisatpsm,tnm
+
+python3 training_sat/train.py \
+  --csv sat_cnn_data_gen/ground_truth_aslib.csv \
+  --task classification \
+  --epochs 100 \
+  --batch_size 128 \
+  --folds 5 \
+  --solvers minisatpsm,mphaseSAT,cryptominisat2011,glucose2
+
+python3 training_sat/train.py \
+  --csv sat_cnn_data_gen/ground_truth_aslib.csv \
+  --task multilabel \
+  --epochs 100 \
+  --batch_size 128 \
+  --folds 3 \
+  --solvers minisatpsm,mphaseSAT,cryptominisat2011,glucose2
+
+python visualizador.py jsp_cnn_data_gen/GEN_12x12_2_image.npy
+
+python analiza_arff.py --arff_path generation_sat/aslib/sc2012-application/algorithm_runs.arff
+python analiza_arff.py --arff_path generation_sat/aslib/sc2012-hard-combinatorial/algorithm_runs.arff
+python analiza_arff.py --arff_path generation_sat/aslib/sc2012-random/algorithm_runs.arff
+
+isort . --profile=black black .
+
+
+def build_cnn_precise(out_dim, task, lr: float = 0.03):
+    """CNN que replica la arquitectura y entrenamiento del paper AAAI 2016."""
+    inputs = tf.keras.Input(shape=(128, 128, 1))
+
+    # Conv Block 1
+    x = tf.keras.layers.Conv2D(32, kernel_size=3, activation="relu", padding="same")(inputs)
+    x = tf.keras.layers.MaxPooling2D(pool_size=2)(x)
+    x = tf.keras.layers.Dropout(0.1)(x)
+
+    # Conv Block 2
+    x = tf.keras.layers.Conv2D(64, kernel_size=2, activation="relu", padding="same")(x)
+    x = tf.keras.layers.MaxPooling2D(pool_size=2)(x)
+    x = tf.keras.layers.Dropout(0.1)(x)
+
+    # Conv Block 3
+    x = tf.keras.layers.Conv2D(128, kernel_size=2, activation="relu", padding="same")(x)
+    x = tf.keras.layers.MaxPooling2D(pool_size=2)(x)
+    x = tf.keras.layers.Dropout(0.2)(x)
+
+    # Dense layers
+    x = tf.keras.layers.Flatten()(x)
+    x = tf.keras.layers.Dense(1000, activation="relu")(x)
+    x = tf.keras.layers.Dropout(0.5)(x)
+    x = tf.keras.layers.Dense(200, activation="relu")(x)
+
+    # Output
+    if task == "classification":
+        outputs = tf.keras.layers.Dense(out_dim, activation="softmax")(x)
+        loss = "sparse_categorical_crossentropy"
+        metrics = ["accuracy"]
+    elif task == "multilabel":
+        outputs = tf.keras.layers.Dense(out_dim, activation="sigmoid")(x)
+        loss = "binary_crossentropy"
+        metrics = [tf.keras.metrics.AUC(curve="PR", name="auc_pr")]
+    else:
+        outputs = tf.keras.layers.Dense(out_dim, activation="linear")(x)
+        loss = "mae"
+        metrics = ["mae"]
+
+    # SGD + Nesterov with schedule-ready parameters
+    optimizer = tf.keras.optimizers.SGD(learning_rate=lr, momentum=0.9, nesterov=True)
+
+    model = tf.keras.Model(inputs, outputs)
+    model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
+    return model

@@ -19,6 +19,24 @@ jsp_cnn_data_mzn_generated/
 out/
 aslib/
 instances/
+sat_cnn_data_gen/
+training_reports_jsp/
+training_reports_sat/
+sat_cnn_data_gen_rand/
+sat_cnn_data_gen_hard/
+sat_cnn_data_gen_all/
+
+promedio_tiempos.py
+make_instance_map.py
+find_instances_from_arff.py
+audit_raw_resolution.py
+audit_images.py
+analiza_csv_dataset.py
+analiza_arff.py
+
+guide.txt
+setup.txt
+found_path.txt
 
 training_reports/
 
