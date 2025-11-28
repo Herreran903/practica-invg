@@ -28,9 +28,18 @@ def build_instance_path_map(instances_dir: Optional[str]) -> Dict[str, str]:
         return mapping
     
     # Recursively walk directory tree
+    compressed_exts = (".gz", ".bz2", ".xz", ".zip", ".lzma", ".izma")
     for root, _, files in os.walk(instances_dir):
         for filename in files:
-            mapping[filename] = os.path.join(root, filename)
+            path = os.path.join(root, filename)
+            mapping[filename] = path
+            # Also map the filename without compression extension to the same path
+            for ext in compressed_exts:
+                if filename.endswith(ext):
+                    base = filename[: -len(ext)]
+                    # Only set if not already present to prefer uncompressed exact matches
+                    mapping.setdefault(base, path)
+                    break
     
     return mapping
 
@@ -94,6 +103,26 @@ def resolve_raw_text_path(
     if instance_id in map_by_filename and os.path.exists(map_by_filename[instance_id]):
         return map_by_filename[instance_id]
     
+    # Try compressed variants of the filename (e.g., .cnf.gz, .cnf.bz2, .cnf.xz, .zip)
+    compressed_exts = (".gz", ".bz2", ".xz", ".zip", ".lzma", ".izma")
+    for ext in compressed_exts:
+        cand = instance_id + ext
+        if cand in map_by_filename and os.path.exists(map_by_filename[cand]):
+            return map_by_filename[cand]
+    
+    # Fallback: scan map_by_filename for keys whose compression-stripped name matches the instance_id
+    for k, v in map_by_filename.items():
+        for ext in compressed_exts:
+            if k.endswith(ext) and k[: -len(ext)] == instance_id and os.path.exists(v):
+                return v
+    
+    # Also handle the inverse: instance_id might include a compression ext while the map key does not
+    for ext in compressed_exts:
+        if instance_id.endswith(ext):
+            base = instance_id[: -len(ext)]
+            if base in map_by_filename and os.path.exists(map_by_filename[base]):
+                return map_by_filename[base]
+    
     return None
 
 
@@ -124,6 +153,12 @@ def resolve_path_with_prefix_map(
     direct_path = os.path.join(instances_root, instance_id)
     if os.path.exists(direct_path):
         return direct_path
+    # Try compressed variants for direct path
+    compressed_exts = (".gz", ".bz2", ".xz", ".zip", ".lzma", ".izma")
+    for ext in compressed_exts:
+        cand = direct_path + ext
+        if os.path.exists(cand):
+            return cand
     
     # Try with prefix mapping
     parts = instance_id.split("/", 1)
@@ -135,11 +170,20 @@ def resolve_path_with_prefix_map(
         )
         if os.path.exists(mapped_path):
             return mapped_path
+        # Compressed variants for mapped path
+        for ext in compressed_exts:
+            cand = mapped_path + ext
+            if os.path.exists(cand):
+                return cand
     
-    # Exhaustive search by basename
+    # Exhaustive search by basename (match with or without compression extension)
     basename = os.path.basename(instance_id)
     for root, _, files in os.walk(instances_root):
-        if basename in files:
-            return os.path.join(root, basename)
+        for fn in files:
+            if fn == basename:
+                return os.path.join(root, fn)
+            for ext in compressed_exts:
+                if fn.endswith(ext) and fn[: -len(ext)] == basename:
+                    return os.path.join(root, fn)
     
     return None
