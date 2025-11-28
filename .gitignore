@@ -12,7 +12,7 @@ env/
 # --- MiniZinc / Job Shop Generation Output ---
 
 # Directorios de datos generados por los scripts de Python
-jsp_cnn_data_gen/
+/datasets
 jsp_cnn_data_mzn/
 jsp_cnn_data_mzn_academic/
 jsp_cnn_data_mzn_generated/
@@ -50,3 +50,98 @@ training_reports/
 **/solver_logs_temp/
 
 .DS_Store
+
+# --- General improvements for Python/ML project on macOS & common tooling ---
+
+# SO/Editor
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# IDE
+.vscode/
+.idea/
+
+# Python build/distribution
+build/
+dist/
+pip-wheel-metadata/
+*.egg
+.eggs/
+*.egg-info/
+*.manifest
+*.spec
+
+# Python bytecode (catch-all)
+*.py[cod]
+*.so
+
+# Virtual environments (complemento)
+.venv/
+venv/
+env/
+
+# Testing / Coverage / Linters / Type checkers
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+.jupyter/lab/workspaces/
+
+# Cachés genéricas
+.cache/
+**/.cache/
+
+# Variables de entorno y secretos
+.env
+.env.*
+*.env
+
+# Logs y salidas temporales
+logs/
+**/*.log
+
+# Artefactos de ML / Deep Learning (checkpoints, modelos, etc.)
+runs/                 # TensorBoard
+checkpoints/
+**/checkpoints/
+**/results/
+**/*.pt
+**/*.pth
+**/*.ckpt
+**/*.onnx
+**/*.h5
+**/*.pkl
+**/*.joblib
+
+# Datos grandes (con excepciones para metadatos)
+data/**
+!data/**/.gitkeep
+!data/**/*.md
+
+# MiniZinc artefactos de compilación/ejecución
+*.fzn
+*.ozn
+*.dmp
+
+# Directorios temporales del solver (complemento)
+**/solver_logs/
+
+# Preferencia del usuario: ignorar completamente todos los directorios "results"
+**/results/**
+training/**/results/
+training/jssp/results/
+training/sat/results/

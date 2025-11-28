@@ -1,0 +1,126 @@
+# Configuration for SAT Image-Based Solver Selection Training
+# This module trains CNNs on image representations of SAT problem instances
+
+experiment:
+  name: "sat_images_cnn"
+  description: "CNN for SAT solver selection from grayscale images"
+  version: "1.0.0"
+
+data:
+  # Image dimensions
+  target_height: 128
+  target_width: 128
+  
+  # Time limit for solver execution (seconds)
+  # Used for resolved_rate and AST calculations
+  time_limit_s: 1800.0
+  
+  # Column name for feature extraction time
+  # If null, assumes 0 seconds
+  feat_time_column: null
+  
+  # Column name in CSV with paths to .npy image files
+  image_path_column: "Image_Npy_Path"
+
+model:
+  # CNN architecture for 128x128x1 input
+  # Filters for each Conv2D layer
+  conv_filters: [16, 32, 64]
+  
+  # Kernel size for Conv2D layers
+  conv_kernel_size: 3
+  
+  # Pool size for MaxPooling2D layers
+  pool_size: 2
+  
+  # Dropout rate after convolutions
+  dropout_conv: 0.25
+  
+  # Number of units in dense layer
+  dense_units: 256
+  
+  # Dropout rate after dense layer
+  dropout_dense: 0.5
+
+training:
+  # Number of training epochs
+  epochs: 25
+  
+  # Batch size
+  batch_size: 64
+  
+  # Learning rate for Adam optimizer
+  learning_rate: 0.001
+  
+  # Number of K-Fold splits
+  k_folds: 5
+  
+  # Number of K-Fold repetitions (e.g., 5 for 5x5 cross-validation)
+  # Each repetition uses a different random seed
+  k_fold_repeats: 1
+  
+  # Early stopping patience (epochs)
+  early_stopping_patience: 6
+  
+  # Random seed for reproducibility (base seed)
+  seed: 42
+
+output:
+  # Parent directory for training results
+  parent_dir: "training/sat/results"
+  
+  # Run name prefix
+  run_name: "sat_images_cnn"
+  
+  # Whether to append task name to output directory
+  append_task_to_dirname: true
+  
+  # Timestamp format for output directories
+  timestamp_format: "%Y%m%d_%H%M%S"
+
+# SAT-specific settings
+sat:
+  # Optional: Filter to specific solvers (comma-separated)
+  # If null, uses all solvers found in CSV
+  selected_solvers: null
+  
+  # Status column suffix (e.g., "clasp_Status")
+  # Used to determine if solver successfully resolved instance
+  status_column_suffix: "_Status"
+  
+  # Valid status values indicating successful resolution
+  valid_statuses: ["ok", "sat", "unsat"]
+  
+  # Invalid status values indicating failure
+  invalid_statuses: ["timeout", "time_out", "timedout", "memout", "crash", "error", "fail"]
+
+# Task-specific configurations
+tasks:
+  classification:
+    description: "Select the single best solver for each instance"
+    output_activation: "softmax"
+    loss: "sparse_categorical_crossentropy"
+    metrics: ["accuracy"]
+    # Additional SAT metrics
+    compute_resolved_rate: true
+    compute_ast: true
+    
+  multilabel:
+    description: "Identify all viable solvers (runtime < time_limit)"
+    output_activation: "sigmoid"
+    loss: "binary_crossentropy"
+    metrics: ["auc_pr"]
+    threshold: 0.5  # Binary threshold for predictions
+    # Additional SAT metrics
+    compute_resolved_rate: true
+    compute_ast: true
+    
+  regression:
+    description: "Predict runtime for each solver"
+    output_activation: "linear"
+    loss: "mae"
+    metrics: ["mae"]
+    nan_penalty_multiplier: 10.0  # Multiply time_limit by this for NaN runtimes
+    # Regression doesn't compute resolved_rate/AST
+    compute_resolved_rate: false
+    compute_ast: false

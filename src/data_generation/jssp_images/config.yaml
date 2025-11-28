@@ -1,0 +1,137 @@
+# Configuration for JSSP Images Data Generation
+# This file centralizes all paths, parameters, and settings for the JSSP to grayscale images pipeline
+
+# Model paths (relative to project root)
+models:
+  cp_model: "models/jssp/model.mzn"
+  mip_model: "models/jssp/model_linear.mzn"
+
+# Output directories (relative to project root)
+output:
+  base_dir: "data/jssp/datasets"
+  academic_dir: "jsp_cnn_data_acad"
+  generated_dir: "jssp_cnn_data_images"
+  
+# Output file names
+filenames:
+  academic_csv: "ground_truth_jsp_academic.csv"
+  generated_csv: "ground_truth_jsp_generated_dataset.csv"
+
+# Image generation parameters
+image:
+  target_size: 128  # Size of the square grayscale image (128x128)
+
+# Academic mode configuration (JSPLIB instances)
+academic:
+  instances:
+    - "ft06"
+    - "ft10"
+    - "la01"
+    - "abz5"
+  
+  time_limit_ms: 60000  # 60 seconds
+  penalty_factor_k: 10.0
+  
+  # Solver strategies for academic mode
+  solver_strategies:
+    - solver: "gecode"
+      strategy: "default"
+      key: "GECODE_DEFAULT"
+    - solver: "chuffed"
+      strategy: "default"
+      key: "CHUFFED_DEFAULT"
+
+# Generated mode configuration (random instances)
+generated:
+  # Time limits in milliseconds for benchmarking
+  time_limits_ms:
+    - 5000   # 5 seconds
+    - 30000  # 30 seconds
+    - 60000  # 60 seconds
+  
+  # Random seeds for reproducibility
+  random_seeds:
+    - 1
+    - 2
+    - 3
+  
+  # Generation cases: (num_jobs, num_machines, num_instances)
+  generation_cases:
+    - [4, 4, 5]
+    # - [6, 6, 5]
+    # - [8, 8, 5]
+    # - [10, 10, 5]
+  
+  # Instance generation parameters
+  instance_generation:
+    duration_range: [1, 20]  # Min and max duration for operations
+    seed: 42  # Seed for the instance generator
+
+# Solver candidates for generated mode
+# Format: (solver_id, key_identifier, type, options)
+solver_candidates:
+  # CP Solvers
+  - solver_id: "gecode"
+    key: "GECODE_FF"
+    type: "cp"
+    options:
+      strategy: "first_fail"
+      supports_seed: true
+      inject_search: true
+  
+  - solver_id: "chuffed"
+    key: "CHUFFED_IO"
+    type: "cp"
+    options:
+      strategy: "input_order"
+      supports_seed: true
+      inject_search: true
+  
+  - solver_id: "cp-sat"
+    key: "CPSAT_FF"
+    type: "cp"
+    options:
+      strategy: "first_fail"
+      supports_seed: true
+      inject_search: true
+  
+  # MIP Solvers
+  - solver_id: "coin-bc"
+    key: "CBC_DEF"
+    type: "mip"
+    options:
+      strategy: null
+      supports_seed: false
+      inject_search: false
+  
+  - solver_id: "scip"
+    key: "SCIP_DEF"
+    type: "mip"
+    options:
+      strategy: null
+      supports_seed: false
+      inject_search: false
+  
+  - solver_id: "highs"
+    key: "HIGHS_DEF"
+    type: "mip"
+    options:
+      strategy: null
+      supports_seed: false
+      inject_search: false
+  
+  - solver_id: "cplex"
+    key: "CPLEX_DEF"
+    type: "mip"
+    options:
+      strategy: null
+      supports_seed: false
+      inject_search: false
+  
+  - solver_id: "gurobi"
+    key: "GUROBI_DEF"
+    type: "mip"
+    options:
+      strategy: null
+      supports_seed: false
+      inject_search: false

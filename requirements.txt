@@ -29,4 +29,5 @@ typing_extensions==4.15.0
 tzdata==2025.2
 tensorflow==2.19.*
 keras==3.6.*
-scikit-learn==1.6.*        
+scikit-learn==1.6.*
+PyYAML==6.0.*

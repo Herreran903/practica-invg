@@ -1,0 +1,91 @@
+# Configuration for JSSP Tensor-Based Solver Selection Training
+# This module trains CNNs on 3D tensor representations (JOBS x MACHINES x 2)
+# where channel 0 = machine ID and channel 1 = processing duration
+
+experiment:
+  name: "jssp_tensors_cnn"
+  description: "CNN for JSSP solver selection from 3D tensor representations"
+  version: "1.0.0"
+
+data:
+  # Maximum problem size (tensors are padded to this size)
+  max_jobs: 10
+  max_machines: 10
+  n_channels: 2  # [machine_id, duration]
+  
+  # Time limit for multilabel task (seconds)
+  time_limit_s: 60.0
+  
+  # Column name in CSV with paths to .npy tensor files
+  tensor_path_column: "Image_Npy_Path"
+
+model:
+  # CNN architecture for 10x10x2 input
+  # Filters for each Conv2D layer
+  conv_filters: [32, 64, 128]
+  
+  # Kernel size for Conv2D layers
+  conv_kernel_size: 3
+  
+  # Pool size for MaxPooling2D layers
+  pool_size: 2
+  
+  # Dropout rate after dense layer
+  dropout_dense: 0.4
+  
+  # Number of units in dense layer
+  dense_units: 256
+
+training:
+  # Number of training epochs
+  epochs: 25
+  
+  # Batch size
+  batch_size: 64
+  
+  # Learning rate for Adam optimizer
+  learning_rate: 0.001
+  
+  # Number of K-Fold splits
+  k_folds: 5
+  
+  # Early stopping patience (epochs)
+  early_stopping_patience: 6
+  
+  # Random seed for reproducibility
+  seed: 42
+
+output:
+  # Parent directory for training results
+  parent_dir: "training/jssp/results"
+  
+  # Run name prefix
+  run_name: "jssp_tensors_cnn"
+  
+  # Whether to append task name to output directory
+  append_task_to_dirname: true
+  
+  # Timestamp format for output directories
+  timestamp_format: "%Y%m%d_%H%M%S"
+
+# Task-specific configurations
+tasks:
+  classification:
+    description: "Select the single best solver for each instance"
+    output_activation: "softmax"
+    loss: "sparse_categorical_crossentropy"
+    metrics: ["accuracy"]
+    
+  multilabel:
+    description: "Identify all viable solvers (runtime < time_limit)"
+    output_activation: "sigmoid"
+    loss: "binary_crossentropy"
+    metrics: ["auc_pr"]
+    threshold: 0.5  # Binary threshold for predictions
+    
+  regression:
+    description: "Predict runtime for each solver"
+    output_activation: "linear"
+    loss: "mae"
+    metrics: ["mae"]
+    nan_penalty_multiplier: 10.0  # Multiply time_limit by this for NaN runtimes

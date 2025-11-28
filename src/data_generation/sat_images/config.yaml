@@ -1,0 +1,54 @@
+# Configuration for SAT Images Data Generation
+# This file centralizes all paths, parameters, and settings for the SAT to grayscale images pipeline
+
+# Output directories (relative to project root)
+output:
+  base_dir: "data/sat/datasets"
+  default_output_dir: "sat_cnn_data_images"
+  
+# Output file names
+filenames:
+  ground_truth_csv: "ground_truth_aslib.csv"
+
+# Image generation parameters
+image:
+  target_size: 128  # Size of the square grayscale image (128x128)
+
+# ASlib scenario processing
+aslib:
+  default_timeout_s: 5000.0  # Default timeout if not found in description.txt
+  
+  # Prefix mapping for resolving instance paths
+  # Maps prefixes in instance IDs to actual directory structures
+  prefix_map:
+    "SAT-Race-2010-CNF": "Application SAT+UNSAT/SAT Race 2010"
+    "SATCompetition2007": "SATCompetition2007/industrial"
+    "SATCompetition2009": "SATCompetition2009/application"
+    "SATCompetition2011": "SATCompetition2011/application"
+    "SC2012_Application_Debugged": "SC2012_Application_Debugged/satrace-unselected"
+
+# Example scenarios (for documentation)
+# These are typical ASlib scenarios for SAT problems
+example_scenarios:
+  - name: "sc2012-application"
+    description: "SAT Competition 2012 - Application track"
+    path: "data/sat/aslib/sc2012-application"
+  
+  - name: "sc2012-hard-combinatorial"
+    description: "SAT Competition 2012 - Hard Combinatorial track"
+    path: "data/sat/aslib/sc2012-hard-combinatorial"
+  
+  - name: "sc2012-random"
+    description: "SAT Competition 2012 - Random track"
+    path: "data/sat/aslib/sc2012-random"
+
+# Instance directories (examples)
+example_instances:
+  - name: "sc2012-application-instances"
+    path: "data/sat/instances/sc2012-application"
+  
+  - name: "sc2012-hard-combinatorial-instances"
+    path: "data/sat/instances/sc2012-hard-combinatorial"
+  
+  - name: "sc2012-random-instances"
+    path: "data/sat/instances/sc2012-random"

@@ -1,0 +1,149 @@
+# Configuration for JSSP Images CNN Training
+# This file centralizes all training parameters for reproducibility and easy experimentation
+
+# ============================================================================
+# EXPERIMENT METADATA
+# ============================================================================
+experiment:
+  name: "cnn_solver_selector_jssp_images"
+  description: "CNN-based solver selection for JSSP using grayscale images"
+  seed: 42  # Random seed for reproducibility
+
+# ============================================================================
+# DATA CONFIGURATION
+# ============================================================================
+data:
+  # Path to CSV with ground truth and image paths
+  # Expected columns: Image_Npy_Path, *_Runtime_s, (optional) *_Score_S_rel
+  csv_path: "data/jssp/datasets/jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv"
+  
+  # Image specifications
+  image:
+    target_height: 128
+    target_width: 128
+    channels: 1  # Grayscale
+  
+  # Time limit for solver execution (seconds)
+  time_limit_s: 60.0
+  
+  # Whether to use *_Score_S_rel columns instead of *_Runtime_s for "best" solver
+  use_score: false
+
+# ============================================================================
+# MODEL ARCHITECTURE
+# ============================================================================
+model:
+  # CNN architecture parameters
+  architecture:
+    conv_layers:
+      - filters: 16
+        kernel_size: 3
+        activation: "relu"
+        pooling: true
+      - filters: 32
+        kernel_size: 3
+        activation: "relu"
+        pooling: true
+      - filters: 64
+        kernel_size: 3
+        activation: "relu"
+        pooling: true
+    
+    dropout_conv: 0.25
+    
+    dense_layers:
+      - units: 256
+        activation: "relu"
+    
+    dropout_dense: 0.5
+  
+  # Learning rate for Adam optimizer
+  learning_rate: 0.001
+
+# ============================================================================
+# TRAINING CONFIGURATION
+# ============================================================================
+training:
+  # Task type: classification | multilabel | regression
+  task: "classification"
+  
+  # Training hyperparameters
+  epochs: 25
+  batch_size: 64
+  
+  # Early stopping configuration
+  early_stopping:
+    monitor: "val_loss"
+    patience: 6
+    restore_best_weights: true
+  
+  # Cross-validation
+  k_folds: 5
+  
+  # Whether to use stratified k-fold (only for classification)
+  stratified: true
+
+# ============================================================================
+# OUTPUT CONFIGURATION
+# ============================================================================
+output:
+  # Parent directory for all training reports
+  results_dir: "training/jssp/results"
+  
+  # Whether to append task name to output directory
+  append_task_to_dirname: false
+  
+  # Timestamp format for run directories
+  timestamp_format: "%Y%m%d_%H%M%S"
+  
+  # What to save per fold
+  save_per_fold:
+    predictions: true  # y_true.npy, y_pred.npy
+    metrics: true      # metrics.json
+    plots: true        # confusion matrix, class bars, etc.
+    reports: true      # classification_report.csv
+
+# ============================================================================
+# TASK-SPECIFIC CONFIGURATIONS
+# ============================================================================
+# These override general settings when specified task is selected
+
+classification:
+  # Metrics to compute
+  metrics:
+    - "accuracy"
+    - "f1_macro"
+  
+  # Visualizations to generate
+  plots:
+    - "confusion_matrix"
+    - "class_bars"
+    - "metrics_per_fold"
+
+multilabel:
+  # Threshold for binary prediction
+  threshold: 0.5
+  
+  # Metrics to compute
+  metrics:
+    - "f1_micro"
+    - "auc_pr"
+  
+  # Visualizations to generate
+  plots:
+    - "pr_curves"
+    - "f1_bars"
+    - "ap_per_label"
+
+regression:
+  # Imputation value for NaN runtimes (multiplier of time_limit_s)
+  nan_imputation_multiplier: 10.0
+  
+  # Metrics to compute
+  metrics:
+    - "mae"
+  
+  # Visualizations to generate
+  plots:
+    - "scatter_per_solver"
+    - "mae_per_solver"
