@@ -1,15 +1,27 @@
 """
 Image conversion utilities for JSSP instances.
 
-This module converts JSSP instance text files (.dzn) into grayscale image representations
-stored as NumPy arrays (.npy files). The conversion process:
-1. Reads the text content as ASCII values
-2. Reshapes into a square matrix
-3. Resizes to target dimensions
-4. Normalizes using z-score normalization
+This module converts JSSP instance files (.dzn) into structured grayscale image
+representations derived from the problem matrices and stores them as NumPy arrays
+(.npy files).
+
+Default behavior:
+- Build the image from the JSSP data matrices (not ASCII).
+- Use PROC_TIME (JOBS×MACHINES) as a single-channel image, min–max normalized
+  to [0, 255], then resized to the target size. Output dtype: float32.
+- Optionally include MACHINE_OF_OP as a second channel (see parameters).
+- Optional z-score standardization can be enabled via normalize=True.
+
+Pipeline:
+1) Parse .dzn to extract: JOBS, MACHINES, PROC_TIME[J×M], MACHINE_OF_OP[J×M]
+2) Normalize selected matrix/matrices to [0, 255] (min–max; MACHINE_OF_OP scaled
+   over machine IDs)
+3) Resize each channel to target_size × target_size (LANCZOS)
+4) Stack channels if configured (default: one channel = PROC_TIME)
 """
 
 import os
+import re
 from typing import Optional
 
 import numpy as np
@@ -17,28 +29,125 @@ import pandas as pd
 from PIL import Image
 
 
-def convert_text_to_grayscale_image(
-    text_file_path: str, target_size: int = 128
-) -> np.ndarray:
+def _parse_dzn(text: str) -> tuple[int, int, np.ndarray, Optional[np.ndarray]]:
     """
-    Convert a text file into a normalized grayscale image matrix.
-
-    The conversion process:
-    1. Read file content as plain text
-    2. Convert each character to its ASCII value
-    3. Reshape into the largest possible square matrix
-    4. Resize to target_size x target_size using LANCZOS interpolation
-    5. Normalize using z-score (mean=0, std=1)
-
-    Args:
-        text_file_path: Path to the input text file (.dzn)
-        target_size: Target size for the square output image (default: 128)
+    Parse a MiniZinc .dzn for JSSP and extract JOBS, MACHINES, PROC_TIME and MACHINE_OF_OP.
 
     Returns:
-        Normalized grayscale image as float32 numpy array of shape (target_size, target_size)
+        jobs, machines, proc_time[J,M], machine_of_op[J,M or None if missing]
+    """
+
+    def _find_int(name: str) -> int:
+        # Tolerant to whitespace/newlines and case
+        pattern = re.compile(rf"\b{name}\s*=\s*(\d+)\s*;", re.IGNORECASE | re.MULTILINE)
+        m = pattern.search(text)
+        if not m:
+            raise ValueError(f"Missing integer '{name}' in .dzn")
+        return int(m.group(1))
+
+    def _find_array(name: str) -> np.ndarray:
+        """
+        Robustly extract the flat list inside array2d(...) for the given variable name.
+        Tolerant to:
+          - Arbitrary whitespace/newlines
+          - Any set names or extra arguments before the list (e.g., array2d(SET_JOBS, SET_POS, [ ... ]);)
+        """
+        # 1) Find the start of "name = array2d("
+        start_pat = re.compile(
+            rf"\b{name}\s*=\s*array2d\s*\(", re.IGNORECASE | re.MULTILINE
+        )
+        m = start_pat.search(text)
+        if not m:
+            raise ValueError(f"Missing array2d for '{name}' in .dzn")
+
+        # 2) Find the first '[' after array2d( ... to locate the list of numbers
+        list_start = text.find("[", m.end())
+        if list_start == -1:
+            raise ValueError(f"array2d for '{name}' has no '[' list section")
+
+        # 3) Find the closing ']' of that list (numbers lists in our .dzn contain only digits/commas/spaces/newlines)
+        list_end = text.find("]", list_start + 1)
+        if list_end == -1:
+            raise ValueError(
+                f"array2d for '{name}' has no closing ']' for list section"
+            )
+
+        nums_str = text[list_start + 1 : list_end]
+        vals = [int(s) for s in re.findall(r"-?\d+", nums_str)]
+        return np.asarray(vals, dtype=np.int32)
+
+    jobs = _find_int("JOBS")
+    machines = _find_int("MACHINES")
+
+    pt_flat = _find_array("PROC_TIME")
+    if pt_flat.size != jobs * machines:
+        raise ValueError(
+            f"PROC_TIME has {pt_flat.size} elements, expected {jobs*machines}"
+        )
+    proc_time = pt_flat.reshape(jobs, machines)
+
+    mo = None
+    try:
+        mo_flat = _find_array("MACHINE_OF_OP")
+        if mo_flat.size != jobs * machines:
+            raise ValueError(
+                f"MACHINE_OF_OP has {mo_flat.size} elements, expected {jobs*machines}"
+            )
+        mo = mo_flat.reshape(jobs, machines)
+    except ValueError:
+        mo = None
+
+    return jobs, machines, proc_time, mo
+
+
+def _minmax_to_uint8(arr: np.ndarray) -> np.ndarray:
+    """Scale arr to uint8 [0..255] using per-channel min–max."""
+    a = arr.astype(np.float32)
+    mn = float(np.min(a))
+    mx = float(np.max(a))
+    if not np.isfinite(mn) or not np.isfinite(mx) or mx <= mn:
+        return np.zeros_like(a, dtype=np.uint8)
+    scaled = (a - mn) / (mx - mn)
+    return np.clip(np.round(scaled * 255.0), 0, 255).astype(np.uint8)
+
+
+def _resize_uint8_channel(channel_uint8: np.ndarray, target_size: int) -> np.ndarray:
+    """Resize single-channel uint8 image to target size; return float32 array."""
+    pil = Image.fromarray(channel_uint8, mode="L")
+    pil_resized = pil.resize((target_size, target_size), Image.Resampling.LANCZOS)
+    return np.asarray(pil_resized, dtype=np.float32)
+
+
+def convert_text_to_grayscale_image(
+    text_file_path: str,
+    target_size: int = 128,
+    include_machine_channel: bool = False,
+    normalize: bool = False,
+) -> np.ndarray:
+    """
+    Convert a .dzn JSSP file into a structured grayscale image.
+
+    - Channel 0 (always): PROC_TIME[J×M], min–max normalized to [0, 255]
+    - Channel 1 (optional): MACHINE_OF_OP[J×M] scaled over machine IDs to [0, 255]
+      (1-indexed in .dzn; mapped to [0..M-1] then to [0..255])
+
+    The resulting channel(s) are resized to target_size×target_size using LANCZOS.
+    If normalize=True, an additional z-score standardization is applied per channel.
+
+    Args:
+        text_file_path: Path to the input .dzn file
+        target_size: Output square size (default: 128)
+        include_machine_channel: Whether to add the MACHINE_OF_OP channel
+        normalize: If True, apply z-score standardization per channel
+
+    Returns:
+        np.ndarray float32 with shape:
+          - (target_size, target_size) for single-channel
+          - (target_size, target_size, 2) if include_machine_channel is True
 
     Raises:
         FileNotFoundError: If input file doesn't exist
+        ValueError: If .dzn parsing fails or shapes are inconsistent
     """
     # Read file content
     try:
@@ -47,41 +156,45 @@ def convert_text_to_grayscale_image(
     except FileNotFoundError:
         raise FileNotFoundError(f"Text file not found: {text_file_path}")
 
-    # Convert characters to ASCII values
-    ascii_values = [ord(char) for char in content]
-    n_values = len(ascii_values)
+    # Parse .dzn structured data
+    jobs, machines, proc_time, machine_of_op = _parse_dzn(content)
 
-    # Calculate largest square that fits the data
-    side_length = int(np.sqrt(n_values))
-    n_usable = side_length * side_length
+    # Build channels as uint8
+    channels: list[np.ndarray] = []
 
-    # Handle edge case: empty or very small files
-    if n_usable == 0:
-        return np.zeros((target_size, target_size), dtype=np.float32)
+    # PROC_TIME → min–max → [0..255]
+    pt_u8 = _minmax_to_uint8(proc_time)
+    channels.append(pt_u8)
 
-    # Reshape to square matrix
-    ascii_values_square = ascii_values[:n_usable]
-    initial_image = np.array(ascii_values_square, dtype=np.uint8).reshape(
-        (side_length, side_length)
-    )
+    # MACHINE_OF_OP → scale IDs (1..M) to [0..255]
+    if include_machine_channel and machine_of_op is not None:
+        if machines > 1:
+            mo_zero = (machine_of_op.astype(np.float32) - 1.0) / float(machines - 1)
+            mo_u8 = np.clip(np.round(mo_zero * 255.0), 0, 255).astype(np.uint8)
+        else:
+            mo_u8 = np.zeros_like(machine_of_op, dtype=np.uint8)
+        channels.append(mo_u8)
 
-    # Resize to target dimensions using high-quality LANCZOS resampling
-    pil_image = Image.fromarray(initial_image)
-    resized_image = pil_image.resize(
-        (target_size, target_size), Image.Resampling.LANCZOS
-    )
-
-    # Convert back to numpy array
-    image_array = np.array(resized_image, dtype=np.float32)
-
-    # Normalize using z-score (only if std > 0)
-    std_dev = np.std(image_array)
-    if std_dev > 0:
-        normalized_image = (image_array - np.mean(image_array)) / std_dev
+    # Resize each channel and stack (if any)
+    resized = [_resize_uint8_channel(c, target_size) for c in channels]
+    if len(resized) == 1:
+        out = resized[0]  # (H, W)
     else:
-        normalized_image = image_array
+        out = np.stack(resized, axis=-1)  # (H, W, C)
 
-    return normalized_image
+    # Optional z-score per channel
+    if normalize:
+        if out.ndim == 2:
+            std = float(out.std())
+            if std > 0:
+                out = (out - float(out.mean())) / std
+        else:
+            for ch in range(out.shape[-1]):
+                ch_std = float(out[..., ch].std())
+                if ch_std > 0:
+                    out[..., ch] = (out[..., ch] - float(out[..., ch].mean())) / ch_std
+
+    return out.astype(np.float32)
 
 
 def convert_dataset_to_images(
@@ -90,26 +203,34 @@ def convert_dataset_to_images(
     instance_name_col: str = "Instance_Name",
     text_path_col: str = "Raw_Text_Path",
     output_col: str = "Image_Npy_Path",
+    include_machine_channel: bool = False,
+    normalize: bool = False,
 ) -> None:
     """
-    Convert all instances in a dataset CSV to grayscale images.
+    Convert all instances in a dataset CSV to structured grayscale images (JSSP).
+
+    Default behavior uses PROC_TIME as a single-channel image with min–max normalization
+    to [0, 255]. Set include_machine_channel=True to add MACHINE_OF_OP as a second channel.
+    Set normalize=True to apply z-score per channel after scaling.
 
     Reads a CSV file containing instance information, converts each instance's
-    text file to a grayscale image, saves as .npy, and updates the CSV with
+    .dzn file to a grayscale image, saves as .npy, and updates the CSV with
     image paths.
 
     Args:
         csv_path: Path to the dataset CSV file
         target_size: Target size for generated images (default: 128)
         instance_name_col: Name of column containing instance names
-        text_path_col: Name of column containing paths to text files
+        text_path_col: Name of column containing paths to .dzn files
         output_col: Name of column to add with image paths
+        include_machine_channel: If True, add MACHINE_OF_OP as a second channel
+        normalize: If True, apply z-score standardization per channel
 
     Raises:
         FileNotFoundError: If CSV file doesn't exist
         KeyError: If required columns are missing from CSV
     """
-    print("=== Image Conversion: Text to Grayscale ===")
+    print("=== Image Conversion: Structured JSSP to Grayscale ===")
     print(f"Input CSV: {os.path.abspath(csv_path)}")
 
     # Read CSV
@@ -145,13 +266,18 @@ def convert_dataset_to_images(
         text_path = row[text_path_col]
 
         try:
-            # Convert to image
-            image_matrix = convert_text_to_grayscale_image(text_path, target_size)
+            # Convert to structured image (PROC_TIME [+ MACHINE_OF_OP])
+            image_matrix = convert_text_to_grayscale_image(
+                text_path,
+                target_size,
+                include_machine_channel=include_machine_channel,
+                normalize=normalize,
+            )
 
             # Save as .npy
             npy_filename = f"{instance_name}_image.npy"
             npy_path = os.path.join(images_dir, npy_filename)
-            np.save(npy_path, image_matrix)
+            np.save(npy_path, image_matrix.astype(np.float32))
 
             image_paths.append(npy_path)
             print(f"  [{idx + 1}/{total_instances}] {instance_name} -> {npy_filename}")

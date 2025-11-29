@@ -80,8 +80,9 @@ jsp_cnn_data_acad/  (or jsp_cnn_data_gen/)
 Images are stored as NumPy arrays (.npy files):
 - **Shape**: (128, 128) by default (configurable)
 - **Data type**: float32
-- **Normalization**: Z-score normalized (mean=0, std=1)
-- **Encoding**: ASCII values of .dzn file content, reshaped and resized
+- **Content**: Raw ASCII intensities from the .dzn file, reshaped and resized (values in [0, 255])
+- **Normalization**: None by default (paper-like). Optional z-score via `normalize=True` when using the converter in [`image_converter.py`](src/data_generation/jssp_images/image_converter.py)
+- **Visualization**: To reproduce paper-like figures, display with `cmap="gray"` and fixed range `vmin=0, vmax=255` (e.g., matplotlib)
 
 ## Configuration
 

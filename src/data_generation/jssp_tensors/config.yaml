@@ -10,7 +10,7 @@ models:
 output:
   base_dir: "data/jssp/datasets"
   academic_dir: "jsp_cnn_data_acad_tensors"
-  generated_dir: "jsp_cnn_data_gen_tensors"
+  generated_dir: "jssp_cnn_data_tensors"
   
 # Output file names
 filenames:

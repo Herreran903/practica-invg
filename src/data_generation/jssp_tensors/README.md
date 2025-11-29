@@ -55,7 +55,7 @@ src/data_generation/jssp_tensors/
 Both modes produce the following outputs in `data/jssp/datasets/`:
 
 ```
-jsp_cnn_data_acad_tensors/  (or jsp_cnn_data_gen_tensors/)
+jsp_cnn_data_acad_tensors/  (or jssp_cnn_data_tensors/)
 ├── *.dzn                           # Instance files in MiniZinc format
 ├── ground_truth_*.csv              # Ground truth with solver metrics
 └── images/
@@ -120,7 +120,7 @@ models:
 output:
   base_dir: "data/jssp/datasets"
   academic_dir: "jsp_cnn_data_acad_tensors"
-  generated_dir: "jsp_cnn_data_gen_tensors"
+  generated_dir: "jssp_cnn_data_tensors"
 ```
 
 ### Tensor Parameters
@@ -186,15 +186,15 @@ python -m src.data_generation.jssp_tensors.cli --mode academic --skip-solvers --
    python -m src.data_generation.jssp_tensors.cli --mode generated
    ```
 3. **Check outputs**:
-   - CSV: `data/jssp/datasets/jsp_cnn_data_gen_tensors/ground_truth_jsp_generated_dataset.csv`
-   - Tensors: `data/jssp/datasets/jsp_cnn_data_gen_tensors/images/*.npy`
+   - CSV: `data/jssp/datasets/jssp_cnn_data_tensors/ground_truth_jsp_generated_dataset.csv`
+   - Tensors: `data/jssp/datasets/jssp_cnn_data_tensors/images/*.npy`
 4. **Use in training**:
    ```python
    import numpy as np
    import pandas as pd
    
    # Load dataset
-   df = pd.read_csv('data/jssp/datasets/jsp_cnn_data_gen_tensors/ground_truth_jsp_generated_dataset.csv')
+   df = pd.read_csv('data/jssp/datasets/jssp_cnn_data_tensors/ground_truth_jsp_generated_dataset.csv')
    
    # Load a tensor
    tensor = np.load(df.iloc[0]['Tensor_Npy_Path'])
