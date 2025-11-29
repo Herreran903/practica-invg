@@ -294,7 +294,10 @@ def _is_ok_row(row: pd.Series, runtime_col: str, time_limit_s: float) -> bool:
 
 
 def compute_resolved_rate(
-    val_df: pd.DataFrame, solver_runtime_cols: list[str], y_pred: np.ndarray, time_limit_s: float
+    val_df: pd.DataFrame,
+    solver_runtime_cols: list[str],
+    y_pred: np.ndarray,
+    time_limit_s: float,
 ) -> float:
     ok_flags = []
     for i, cls_idx in enumerate(y_pred):
@@ -309,7 +312,10 @@ def compute_resolved_rate(
 
 
 def compute_resolved_rate_multilabel(
-    val_df: pd.DataFrame, solver_runtime_cols: list[str], y_pred_bin: np.ndarray, time_limit_s: float
+    val_df: pd.DataFrame,
+    solver_runtime_cols: list[str],
+    y_pred_bin: np.ndarray,
+    time_limit_s: float,
 ) -> float:
     ok_flags = []
     n = y_pred_bin.shape[0]
@@ -330,8 +336,11 @@ def compute_resolved_rate_multilabel(
 
 
 def compute_ast_classification(
-    val_df: pd.DataFrame, solver_runtime_cols: list[str], y_pred: np.ndarray,
-    feat_time_col: str, time_limit_s: float
+    val_df: pd.DataFrame,
+    solver_runtime_cols: list[str],
+    y_pred: np.ndarray,
+    feat_time_col: str,
+    time_limit_s: float,
 ) -> float:
     times = []
     for i, cls_idx in enumerate(y_pred):
@@ -347,8 +356,11 @@ def compute_ast_classification(
 
 
 def compute_ast_multilabel(
-    val_df: pd.DataFrame, solver_runtime_cols: list[str], y_pred_bin: np.ndarray,
-    feat_time_col: str, time_limit_s: float
+    val_df: pd.DataFrame,
+    solver_runtime_cols: list[str],
+    y_pred_bin: np.ndarray,
+    feat_time_col: str,
+    time_limit_s: float,
 ) -> float:
     times = []
     for i in range(y_pred_bin.shape[0]):
@@ -394,7 +406,10 @@ def build_labels(df, solver_cols, task, use_score, time_limit_s: float):
         y = np.array(y, dtype=np.int32)
     elif task == "multilabel":
         rt_cols = solver_cols["runtime"]
-        y = np.stack([multilabel_targets(r, rt_cols, time_limit_s) for _, r in df.iterrows()], axis=0)
+        y = np.stack(
+            [multilabel_targets(r, rt_cols, time_limit_s) for _, r in df.iterrows()],
+            axis=0,
+        )
     else:
         rt_cols = solver_cols["runtime"]
         y = df[rt_cols].astype(float).values
@@ -407,8 +422,17 @@ def build_labels(df, solver_cols, task, use_score, time_limit_s: float):
 # Entrenamiento/Evaluación por fold
 # =====================================================================
 def train_fold(
-    train_df, val_df, solver_cols, task, use_score, epochs, batch_size, outdir, fold_idx,
-    feat_time_col: str, time_limit_s: float
+    train_df,
+    val_df,
+    solver_cols,
+    task,
+    use_score,
+    epochs,
+    batch_size,
+    outdir,
+    fold_idx,
+    feat_time_col: str,
+    time_limit_s: float,
 ):
     """Entrena y evalúa un fold; guarda predicciones, métricas y gráficas."""
     # Etiquetas y rutas
@@ -481,8 +505,12 @@ def train_fold(
         labels_full = list(range(len(class_names)))
         cols_runtime_for_eval = cols
 
-        metrics["resolved_rate"] = compute_resolved_rate(val_df, cols_runtime_for_eval, y_pred, time_limit_s)
-        metrics["AST_sec"] = compute_ast_classification(val_df, cols_runtime_for_eval, y_pred, feat_time_col, time_limit_s)
+        metrics["resolved_rate"] = compute_resolved_rate(
+            val_df, cols_runtime_for_eval, y_pred, time_limit_s
+        )
+        metrics["AST_sec"] = compute_ast_classification(
+            val_df, cols_runtime_for_eval, y_pred, feat_time_col, time_limit_s
+        )
 
         # CSV detalle resolución
         detail_rows = []
@@ -495,7 +523,11 @@ def train_fold(
                     "Image_Npy_Path": row["Image_Npy_Path"],
                     "pred_solver": runtime_col.replace("_Runtime_s", ""),
                     "pred_runtime": row.get(runtime_col, np.nan),
-                    "pred_status": row.get(status_col, np.nan) if status_col in val_df.columns else np.nan,
+                    "pred_status": (
+                        row.get(status_col, np.nan)
+                        if status_col in val_df.columns
+                        else np.nan
+                    ),
                     "resolved_ok": _is_ok_row(row, runtime_col, time_limit_s),
                     "feat_time_s": row.get(feat_time_col, np.nan),
                 }
@@ -537,8 +569,12 @@ def train_fold(
         cols = solver_cols["runtime"]
         class_names = [c.replace("_Runtime_s", "") for c in cols]
 
-        metrics["resolved_rate"] = compute_resolved_rate_multilabel(val_df, cols, y_pred, time_limit_s)
-        metrics["AST_sec"] = compute_ast_multilabel(val_df, cols, y_pred, feat_time_col, time_limit_s)
+        metrics["resolved_rate"] = compute_resolved_rate_multilabel(
+            val_df, cols, y_pred, time_limit_s
+        )
+        metrics["AST_sec"] = compute_ast_multilabel(
+            val_df, cols, y_pred, feat_time_col, time_limit_s
+        )
 
         # CSV detalle multilabel
         detail_rows = []
@@ -553,7 +589,11 @@ def train_fold(
                     {
                         "solver": class_names[j],
                         "runtime": row.get(runtime_col, np.nan),
-                        "status": row.get(_status_col_for(runtime_col), np.nan) if _status_col_for(runtime_col) in val_df.columns else np.nan,
+                        "status": (
+                            row.get(_status_col_for(runtime_col), np.nan)
+                            if _status_col_for(runtime_col) in val_df.columns
+                            else np.nan
+                        ),
                         "resolved_ok": _is_ok_row(row, runtime_col, time_limit_s),
                     }
                 )
@@ -618,8 +658,17 @@ def train_fold(
 # K-Fold + BSS + repetición
 # =====================================================================
 def run_kfold(
-    df, task, solver_cols, use_score, epochs, batch, folds, root_outdir,
-    seed: int, time_limit_s: float, feat_time_col: str
+    df,
+    task,
+    solver_cols,
+    use_score,
+    epochs,
+    batch,
+    folds,
+    root_outdir,
+    seed: int,
+    time_limit_s: float,
+    feat_time_col: str,
 ):
     """Ejecución de K-Fold con baseline BSS, reportes por fold y agregados."""
     # Splitter
@@ -660,15 +709,23 @@ def run_kfold(
         bss_col = cols[bss_idx_i]
 
         if task == "classification":
-            y_val_true = build_labels(val_df, solver_cols, task, use_score, time_limit_s)
+            y_val_true = build_labels(
+                val_df, solver_cols, task, use_score, time_limit_s
+            )
             y_bss = np.full_like(y_val_true, bss_idx_i)
             bss_acc = accuracy_score(y_val_true, y_bss)
             bss_ast = ast_bss(val_df, cols, bss_idx_i, feat_time_col, time_limit_s)
-            print(f"\n[FOLD {i}] BSS={bss_col} | BSS_acc={bss_acc:.4f} | BSS_AST={bss_ast:.1f}s")
+            print(
+                f"\n[FOLD {i}] BSS={bss_col} | BSS_acc={bss_acc:.4f} | BSS_AST={bss_ast:.1f}s"
+            )
         elif task == "multilabel":
             rt_cols = solver_cols["runtime"]
             y_val_true = np.stack(
-                [multilabel_targets(r, rt_cols, time_limit_s) for _, r in val_df.iterrows()], axis=0
+                [
+                    multilabel_targets(r, rt_cols, time_limit_s)
+                    for _, r in val_df.iterrows()
+                ],
+                axis=0,
             )
             y_bss = np.zeros_like(y_val_true)
             y_bss[:, bss_idx_i] = 1.0
@@ -676,11 +733,16 @@ def run_kfold(
                 y_val_true.flatten(), y_bss.flatten(), average="micro", zero_division=0
             )
             bss_ast = ast_bss(val_df, rt_cols, bss_idx_i, feat_time_col, time_limit_s)
-            print(f"\n[FOLD {i}] BSS={bss_col} | BSS_f1_micro={bss_acc:.4f} | BSS_AST={bss_ast:.1f}s")
+            print(
+                f"\n[FOLD {i}] BSS={bss_col} | BSS_f1_micro={bss_acc:.4f} | BSS_AST={bss_ast:.1f}s"
+            )
         else:
             rt_cols = solver_cols["runtime"]
             const_pred = (
-                train_df[rt_cols[bss_idx_i]].astype(float).fillna(time_limit_s * 10).mean()
+                train_df[rt_cols[bss_idx_i]]
+                .astype(float)
+                .fillna(time_limit_s * 10)
+                .mean()
             )
             y_val_true = val_df[rt_cols].astype(float).fillna(time_limit_s * 10).values
             y_bss = np.full_like(y_val_true, const_pred)
@@ -691,8 +753,17 @@ def run_kfold(
         # Entrenamiento
         print(f"[FOLD {i}] Entrenando modelo...")
         _, metrics = train_fold(
-            train_df, val_df, solver_cols, task, use_score, epochs, batch, fold_dir, i,
-            feat_time_col, time_limit_s
+            train_df,
+            val_df,
+            solver_cols,
+            task,
+            use_score,
+            epochs,
+            batch,
+            fold_dir,
+            i,
+            feat_time_col,
+            time_limit_s,
         )
         print(f"[FOLD {i}] VAL metrics: {metrics}")
 
@@ -708,11 +779,21 @@ def run_kfold(
 
         if "resolved_rate" in metrics:
             per_fold_rows.append(
-                {"fold": i, "metric": "resolved_rate", "value": metrics["resolved_rate"], "baseline_bss": None}
+                {
+                    "fold": i,
+                    "metric": "resolved_rate",
+                    "value": metrics["resolved_rate"],
+                    "baseline_bss": None,
+                }
             )
         if "AST_sec" in metrics:
             per_fold_rows.append(
-                {"fold": i, "metric": "AST_sec", "value": metrics["AST_sec"], "baseline_bss": bss_ast}
+                {
+                    "fold": i,
+                    "metric": "AST_sec",
+                    "value": metrics["AST_sec"],
+                    "baseline_bss": bss_ast,
+                }
             )
 
     pf_df = pd.DataFrame(per_fold_rows)
@@ -743,18 +824,44 @@ def run_kfold(
 # =====================================================================
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--csv", required=True, type=str, help="Ruta al CSV final (con Image_Npy_Path).")
-    ap.add_argument("--task", required=True, choices=["classification", "multilabel", "regression"])
-    ap.add_argument("--use_score", action="store_true", help="Usar *_Score_S_rel (si existen) para el 'mejor' solver.")
-    ap.add_argument("--solvers", type=str, default=None,
-                    help="Lista separada por coma con los solvers a usar (ej: clasp1,glucose2,lingeling).")
+    ap.add_argument(
+        "--csv", required=True, type=str, help="Ruta al CSV final (con Image_Npy_Path)."
+    )
+    ap.add_argument(
+        "--task", required=True, choices=["classification", "multilabel", "regression"]
+    )
+    ap.add_argument(
+        "--use_score",
+        action="store_true",
+        help="Usar *_Score_S_rel (si existen) para el 'mejor' solver.",
+    )
+    ap.add_argument(
+        "--solvers",
+        type=str,
+        default=None,
+        help="Lista separada por coma con los solvers a usar (ej: clasp1,glucose2,lingeling).",
+    )
     ap.add_argument("--epochs", type=int, default=25)
     ap.add_argument("--batch_size", type=int, default=64)
     ap.add_argument("--folds", type=int, default=5)
-    ap.add_argument("--repeats", type=int, default=1, help="Repeticiones de la K-Fold (p.ej., 5 para 5x5).")
-    ap.add_argument("--time_limit", type=float, default=1800.0, help="Tiempo límite (s) para AST/Resolved (default 1800).")
-    ap.add_argument("--feat_time_col", type=str, default=None,
-                    help="Columna con tiempo de extracción de features (s). Si no existe, se asume 0.")
+    ap.add_argument(
+        "--repeats",
+        type=int,
+        default=1,
+        help="Repeticiones de la K-Fold (p.ej., 5 para 5x5).",
+    )
+    ap.add_argument(
+        "--time_limit",
+        type=float,
+        default=1800.0,
+        help="Tiempo límite (s) para AST/Resolved (default 1800).",
+    )
+    ap.add_argument(
+        "--feat_time_col",
+        type=str,
+        default=None,
+        help="Columna con tiempo de extracción de features (s). Si no existe, se asume 0.",
+    )
     # Salidas
     ap.add_argument("--outdir", type=str, default=None)
     ap.add_argument("--out_parent", type=str, default=None)
@@ -765,18 +872,27 @@ def main():
     # Carga CSV
     df = pd.read_csv(args.csv)
     if "Image_Npy_Path" not in df.columns:
-        raise ValueError("El CSV no tiene 'Image_Npy_Path'. Corre la conversión primero.")
+        raise ValueError(
+            "El CSV no tiene 'Image_Npy_Path'. Corre la conversión primero."
+        )
 
     # Normalización de rutas a absolutas
     csv_dir = os.path.dirname(os.path.abspath(args.csv))
+
     def _norm_path(p):
-        p = "" if (p is None or (isinstance(p, float) and np.isnan(p))) else str(p).strip()
+        p = (
+            ""
+            if (p is None or (isinstance(p, float) and np.isnan(p)))
+            else str(p).strip()
+        )
         if not p:
             return ""
         return p if os.path.isabs(p) else os.path.normpath(os.path.join(csv_dir, p))
 
     df["Image_Npy_Path"] = df["Image_Npy_Path"].apply(_norm_path)
-    exists_mask = df["Image_Npy_Path"].apply(lambda p: isinstance(p, str) and os.path.exists(p))
+    exists_mask = df["Image_Npy_Path"].apply(
+        lambda p: isinstance(p, str) and os.path.exists(p)
+    )
     missing = int((~exists_mask).sum())
     total = int(len(df))
     if missing > 0:
@@ -793,10 +909,14 @@ def main():
         selected = [s.strip() for s in args.solvers.split(",") if s.strip()]
         missing_solvers = [s for s in selected if f"{s}_Runtime_s" not in df.columns]
         if missing_solvers:
-            raise ValueError(f"Los siguientes solvers no están en el CSV: {missing_solvers}")
+            raise ValueError(
+                f"Los siguientes solvers no están en el CSV: {missing_solvers}"
+            )
 
         keep_runtime = [f"{s}_Runtime_s" for s in selected]
-        keep_score = [f"{s}_Score_S_rel" for s in selected if f"{s}_Score_S_rel" in df.columns]
+        keep_score = [
+            f"{s}_Score_S_rel" for s in selected if f"{s}_Score_S_rel" in df.columns
+        ]
         keep_status = [f"{s}_Status" for s in selected if f"{s}_Status" in df.columns]
 
         base_cols = ["Image_Npy_Path"]
@@ -808,7 +928,15 @@ def main():
         any_true = (df[rt_cols].astype(float) < args.time_limit).any(axis=1)
         print("any_true %:", any_true.mean())
 
-        bad_status = {"timeout","time_out","timedout","memout","crash","error","fail"}
+        bad_status = {
+            "timeout",
+            "time_out",
+            "timedout",
+            "memout",
+            "crash",
+            "error",
+            "fail",
+        }
         cnt_incons = 0
         tot_incons = 0
         for _, row in df.iterrows():
@@ -821,11 +949,18 @@ def main():
                         tot_incons += 1
                         if s in bad_status:
                             cnt_incons += 1
-        print("inconsistencias runtime<time_limit & status malo:", cnt_incons, "/", tot_incons)
+        print(
+            "inconsistencias runtime<time_limit & status malo:",
+            cnt_incons,
+            "/",
+            tot_incons,
+        )
 
     # Columna de tiempo de features
     if args.feat_time_col and args.feat_time_col not in df.columns:
-        raise ValueError(f"La columna de tiempo de features '{args.feat_time_col}' no existe en el CSV.")
+        raise ValueError(
+            f"La columna de tiempo de features '{args.feat_time_col}' no existe en el CSV."
+        )
     if not args.feat_time_col:
         df["_feat_time_zero_"] = 0.0
         args.feat_time_col = "_feat_time_zero_"
@@ -834,16 +969,26 @@ def main():
     ts = datetime.now().strftime(TIMESTAMP_FMT)
     parent_dir = args.out_parent or args.outdir or OUT_PARENT_DIR
     run_name = args.run_name or RUN_NAME
-    run_dirname = f"{run_name}_{args.task}_{ts}" if APPEND_TASK_TO_DIRNAME else f"{run_name}_{ts}"
+    run_dirname = (
+        f"{run_name}_{args.task}_{ts}" if APPEND_TASK_TO_DIRNAME else f"{run_name}_{ts}"
+    )
     root_outdir = ensure_dir(os.path.join(parent_dir, run_dirname))
 
     print(f"Reportes en: {root_outdir}")
-    print(f"Solvers (runtime): {len(solver_cols['runtime'])} | Scores: {bool(solver_cols['score'])}")
-    print(f"Tarea: {args.task} | use_score={args.use_score} | folds={args.folds} | repeats={args.repeats} | epochs={args.epochs}")
+    print(
+        f"Solvers (runtime): {len(solver_cols['runtime'])} | Scores: {bool(solver_cols['score'])}"
+    )
+    print(
+        f"Tarea: {args.task} | use_score={args.use_score} | folds={args.folds} | repeats={args.repeats} | epochs={args.epochs}"
+    )
     print(f"time_limit={args.time_limit} | feat_time_col='{args.feat_time_col}'")
 
     # Repeticiones (p. ej., 5 para 5x5)
-    metric_name = {"classification": "ACC", "multilabel": "F1_micro", "regression": "MAE"}[args.task]
+    metric_name = {
+        "classification": "ACC",
+        "multilabel": "F1_micro",
+        "regression": "MAE",
+    }[args.task]
     all_runs = []
     global_rows = []
 
@@ -866,17 +1011,23 @@ def main():
             feat_time_col=args.feat_time_col,
         )
         all_runs.extend(res)
-        global_rows.append({"rep": rep+1, "mean": mean_, "std": std_})
+        global_rows.append({"rep": rep + 1, "mean": mean_, "std": std_})
 
     t1 = time.time()
 
     # Agregado global sobre todas las repeticiones
     global_mean, global_std = float(np.mean(all_runs)), float(np.std(all_runs))
-    pd.DataFrame(global_rows).to_csv(os.path.join(root_outdir, "metrics_summary_per_rep.csv"), index=False)
+    pd.DataFrame(global_rows).to_csv(
+        os.path.join(root_outdir, "metrics_summary_per_rep.csv"), index=False
+    )
     with open(os.path.join(root_outdir, "metrics_summary_GLOBAL.json"), "w") as f:
-        json.dump({"metric": metric_name, "mean": global_mean, "std": global_std}, f, indent=2)
+        json.dump(
+            {"metric": metric_name, "mean": global_mean, "std": global_std}, f, indent=2
+        )
 
-    print(f"\n=== GLOBAL ({args.task}, {args.folds}x{args.repeats}) === {metric_name}: {global_mean:.4f} ± {global_std:.4f}")
+    print(
+        f"\n=== GLOBAL ({args.task}, {args.folds}x{args.repeats}) === {metric_name}: {global_mean:.4f} ± {global_std:.4f}"
+    )
     print(f"Tiempo total: {t1 - t0:.2f}s")
 
     with open(os.path.join(root_outdir, "README.txt"), "w") as f:
@@ -885,7 +1036,9 @@ def main():
         )
         f.write(f"time_limit: {args.time_limit}\nfeat_time_col: {args.feat_time_col}\n")
         f.write(f"GLOBAL {metric_name}: {global_mean:.4f} ± {global_std:.4f}\n")
-        f.write("Archivos:\n - metrics_summary_GLOBAL.json\n - metrics_summary_per_rep.csv\n - rep_*/metrics_*.json\n")
+        f.write(
+            "Archivos:\n - metrics_summary_GLOBAL.json\n - metrics_summary_per_rep.csv\n - rep_*/metrics_*.json\n"
+        )
 
 
 if __name__ == "__main__":

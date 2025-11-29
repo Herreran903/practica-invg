@@ -13,7 +13,7 @@ from ..jssp_images.model_builder import (
 )
 
 __all__ = [
-    'build_cnn',
-    'build_model_from_config',
-    'get_model_summary',
+    "build_cnn",
+    "build_model_from_config",
+    "get_model_summary",
 ]

@@ -18,11 +18,11 @@ from .prepare_generated_dataset import prepare_generated_dataset
 def main():
     """
     Main entry point for the JSSP Images data generation CLI.
-    
+
     Supports two modes:
     - academic: Uses JSPLIB benchmark instances
     - generated: Creates random balanced instances
-    
+
     Both modes:
     1. Prepare dataset (run solvers, generate ground truth CSV)
     2. Convert instances to grayscale images (.npy files)
@@ -40,49 +40,48 @@ Examples:
 
   # Only convert existing dataset to images (skip solver execution)
   python -m src.data_generation.jssp_images.cli --mode academic --skip-solvers --csv path/to/dataset.csv
-        """
+        """,
     )
-    
+
     parser.add_argument(
         "--mode",
         type=str,
         required=True,
         choices=["academic", "generated"],
-        help="Dataset generation mode: 'academic' (JSPLIB benchmarks) or 'generated' (random instances)"
+        help="Dataset generation mode: 'academic' (JSPLIB benchmarks) or 'generated' (random instances)",
     )
-    
+
     parser.add_argument(
         "--config",
         type=str,
         default="src/data_generation/jssp_images/config.yaml",
-        help="Path to configuration YAML file relative to project root (default: src/data_generation/jssp_images/config.yaml)"
+        help="Path to configuration YAML file relative to project root (default: src/data_generation/jssp_images/config.yaml)",
     )
 
-    
     parser.add_argument(
         "--skip-solvers",
         action="store_true",
-        help="Skip solver execution and only convert existing dataset to images"
+        help="Skip solver execution and only convert existing dataset to images",
     )
-    
+
     parser.add_argument(
         "--csv",
         type=str,
-        help="Path to existing CSV file (required if --skip-solvers is used)"
+        help="Path to existing CSV file (required if --skip-solvers is used)",
     )
-    
+
     parser.add_argument(
         "--image-size",
         type=int,
-        help="Override target image size from config (default: 128)"
+        help="Override target image size from config (default: 128)",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Validate arguments
     if args.skip_solvers and not args.csv:
         parser.error("--csv is required when --skip-solvers is used")
-    
+
     # Load configuration
     try:
         print(f"Loading configuration from: {args.config}")
@@ -91,18 +90,22 @@ Examples:
         # Diagnostic: show resolved paths to validate project_root and outputs
         print("Resolved paths:")
         print(f"  project_root: {config.project_root}")
-        print(f"  cp_model_path: {config.cp_model_path} (exists={Path(config.cp_model_path).exists()})")
-        print(f"  mip_model_path: {config.mip_model_path} (exists={Path(config.mip_model_path).exists() if config.mip_model_path else 'n/a'})")
+        print(
+            f"  cp_model_path: {config.cp_model_path} (exists={Path(config.cp_model_path).exists()})"
+        )
+        print(
+            f"  mip_model_path: {config.mip_model_path} (exists={Path(config.mip_model_path).exists() if config.mip_model_path else 'n/a'})"
+        )
         print(f"  academic_output_dir: {config.academic_output_dir}")
         print(f"  generated_output_dir: {config.generated_output_dir}")
         print()
     except Exception as e:
         print(f"ERROR: Failed to load configuration: {e}", file=sys.stderr)
         sys.exit(1)
-    
+
     # Determine image size
     image_size = args.image_size if args.image_size else config.image_target_size
-    
+
     # Execute pipeline
     try:
         if args.skip_solvers:
@@ -117,28 +120,28 @@ Examples:
                 print("=" * 75)
                 print()
                 csv_path = prepare_academic_dataset(config)
-            
+
             elif args.mode == "generated":
                 print("=" * 75)
                 print("MODE: GENERATED (Random Instances)")
                 print("=" * 75)
                 print()
                 csv_path = prepare_generated_dataset(config)
-            
+
             else:
                 print(f"ERROR: Unknown mode '{args.mode}'", file=sys.stderr)
                 sys.exit(1)
-            
+
             print()
-        
+
         # Convert to images
         print("=" * 75)
         print("STEP 2: Converting instances to grayscale images")
         print("=" * 75)
         print()
-        
+
         convert_dataset_to_images(csv_path, target_size=image_size)
-        
+
         # Success summary
         print()
         print("=" * 75)
@@ -155,14 +158,15 @@ Examples:
         print(f"  - Instance files (.dzn): {Path(csv_path).parent}")
         print(f"  - Image files (.npy): {Path(csv_path).parent / 'images'}")
         print()
-    
+
     except KeyboardInterrupt:
         print("\n\nInterrupted by user. Exiting...", file=sys.stderr)
         sys.exit(130)
-    
+
     except Exception as e:
         print(f"\nERROR: Pipeline failed: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

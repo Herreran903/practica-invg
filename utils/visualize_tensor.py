@@ -47,7 +47,6 @@ from .visualize_common import (
     render_figure,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -79,7 +78,9 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         # Fallback for very old Python (not expected per project requirements)
         class action_bool_opt(argparse.Action):  # type: ignore
             def __call__(self, parser, namespace, values, option_string=None):
-                setattr(namespace, self.dest, option_string and "no-" not in option_string)
+                setattr(
+                    namespace, self.dest, option_string and "no-" not in option_string
+                )
 
     parser = argparse.ArgumentParser(
         description="Visualize a tensor-like file (.npy/.npz/.pt/.pth/.pkl) as an image.",
@@ -142,7 +143,9 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     try:
         arr = load_tensor_like(args.path, key=args.key)
-        logger.info("Loaded tensor %s with shape %s", args.path, getattr(arr, "shape", None))
+        logger.info(
+            "Loaded tensor %s with shape %s", args.path, getattr(arr, "shape", None)
+        )
 
         # Check dimensionality
         if not isinstance(arr, np.ndarray):

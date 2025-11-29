@@ -12,7 +12,7 @@ from .jssp_instance_utils import (
     generate_random_instance,
     get_instance_optimum,
     load_academic_instance,
-    save_instance_as_dzn
+    save_instance_as_dzn,
 )
 from .prepare_academic_dataset import prepare_academic_dataset
 from .prepare_generated_dataset import prepare_generated_dataset

@@ -75,8 +75,9 @@ data/sat/datasets/sat_cnn_data_gen/
 Images are stored as NumPy arrays (.npy files):
 - **Shape**: (128, 128) by default (configurable)
 - **Data type**: float32
-- **Content**: Byte values from instance file, reshaped and resized
-- **Normalization**: Z-score normalized (mean=0, std=1)
+- **Content**: Raw byte/ASCII intensities from the instance file, reshaped and resized
+- **Normalization**: None by default (paper-like). Optional z-score via CLI flag `--normalize` or by passing `normalize=True` to [`sat_images.image_converter.convert_dataset_to_images()`](src/data_generation/sat_images/image_converter.py:84)
+- **Visualization**: To reproduce paper-like figures, display with `cmap="gray"` and fixed range `vmin=0, vmax=255` (e.g., matplotlib)
 - **Naming**: `<instance_name>__<hash>.npy` (hash prevents collisions)
 
 ## Configuration
@@ -150,6 +151,74 @@ python -m src.data_generation.sat_images.cli \
   --instances-dir data/sat/instances/sc2012-application \
   --instance-map-csv data/sat/instance_mapping.csv
 ```
+
+### Instance decompression (recommended)
+
+When your ASlib instances are still compressed (`*.cnf.gz`, `*.bz2`, `*.xz`, `*.zip`, `*.lzma`), the standard flow now prefers plaintext files only. You can decompress everything recursively in two ways:
+
+1) Python CLI (safe default, handles .zip multi-member archives)
+
+- Script: [`scripts/decompress_instances.py`](scripts/decompress_instances.py:1)
+- Dry run (no changes):
+  ```bash
+  python3 scripts/decompress_instances.py data/sat/instances/sc2012-application --dry-run
+  ```
+- Decompress (keep archives):
+  ```bash
+  python3 scripts/decompress_instances.py data/sat/instances/sc2012-application
+  ```
+- Decompress and delete archives after success:
+  ```bash
+  python3 scripts/decompress_instances.py data/sat/instances/sc2012-application --delete
+  ```
+- Overwrite existing plaintext targets (use with care):
+  ```bash
+  python3 scripts/decompress_instances.py data/sat/instances/sc2012-application --overwrite
+  ```
+
+Safety notes:
+- By default, existing targets like `foo.cnf` will NOT be overwritten.
+- Use `--dry-run` first to preview actions.
+- For `.zip` files with multiple members, the script can extract the full internal tree with `--extract-zip-multi`.
+
+2) One-liner find + native tools (fast, shell-based)
+
+- Count compressed files:
+  ```bash
+  find "data/sat/instances/sc2012-application" -type f \
+    -regex '.*\.\(gz\|bz2\|xz\|zip\|lzma\)$' | wc -l
+  ```
+- Decompress .gz (keep archives; add `-d` instead of `-dk` to delete):
+  ```bash
+  find "data/sat/instances/sc2012-application" -type f -name '*.gz' -print0 \
+    | xargs -0 -I{} gzip -dk "{}"
+  ```
+- Decompress .bz2 (keep archives):
+  ```bash
+  find "data/sat/instances/sc2012-application" -type f -name '*.bz2' -print0 \
+    | xargs -0 -I{} bzip2 -dk "{}"
+  ```
+- Decompress .xz (keep archives):
+  ```bash
+  find "data/sat/instances/sc2012-application" -type f -name '*.xz' -print0 \
+    | xargs -0 -I{} unxz -k "{}"
+  ```
+- Decompress .lzma (keep archives):
+  ```bash
+  find "data/sat/instances/sc2012-application" -type f -name '*.lzma' -print0 \
+    | xargs -0 -I{} unlzma -k "{}"
+  ```
+- Extract .zip (never overwrite existing targets due to -n):
+  ```bash
+  find "data/sat/instances/sc2012-application" -type f -name '*.zip' -print0 \
+    | xargs -0 -I{} unzip -n "{}" -d "$(dirname "{}")"
+  ```
+
+Precautions:
+- The flags `-k` (keep) and `-n` (no overwrite) protect existing plaintext (e.g., `foo.cnf`). Remove `-k` (or use `-d` for gzip/bzip2) if you want to delete archives afterward.
+- For `.zip` with many files, prefer the Python script for better control.
+
+After decompression, the CLI will show diagnostics and should report few or zero compressed files remaining. If many remain, rerun with the Python script’s `--delete` to clean up.
 
 ### Typical Workflow
 

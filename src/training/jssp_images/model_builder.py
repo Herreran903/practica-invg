@@ -10,8 +10,9 @@ This module provides functions to build and compile CNN models for three tasks:
 The architecture is configurable via config.yaml parameters.
 """
 
-import tensorflow as tf
 from typing import Literal, Tuple
+
+import tensorflow as tf
 
 
 def build_cnn(

@@ -112,6 +112,7 @@ try:
     from data_preparer_gen import (
         prepare_data_and_ground_truth_minizinc_gen as run_generated_mode,
     )
+
     from data_generation.jssp_tensors.tensor_converter import generate_all_images
 except ImportError as e:
     print("ERROR: Fallo en la importación modular. Revise los nombres de los archivos.")

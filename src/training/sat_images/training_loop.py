@@ -7,24 +7,24 @@ Extends jssp_images training with:
 - SAT-specific metrics (resolved_rate, AST)
 """
 
-import os
 import json
+import os
+from typing import Dict, List, Tuple
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple
 from sklearn.model_selection import KFold, StratifiedKFold
 
 # Reuse base training from jssp_images
 from ..jssp_images.training_loop import train_fold as _train_fold_base
-
-from .model_builder import build_model_from_config
 from .data_utils import (
-    build_labels,
-    make_dataset,
     bss_index,
+    build_labels,
     compute_ast_bss,
+    make_dataset,
 )
 from .evaluation import evaluate_fold
+from .model_builder import build_model_from_config
 
 
 def run_kfold_with_repeats(
@@ -37,10 +37,10 @@ def run_kfold_with_repeats(
 ) -> Tuple[List[Dict], Dict[str, float]]:
     """
     Execute K-Fold cross-validation with optional repetitions.
-    
+
     Supports multiple repetitions (e.g., 5x5) where each repetition
     uses a different random seed.
-    
+
     Args:
         df: Complete DataFrame.
         task: Task type.
@@ -48,41 +48,41 @@ def run_kfold_with_repeats(
         use_score: Whether to use score columns.
         config: Configuration dictionary.
         root_outdir: Root output directory.
-    
+
     Returns:
         Tuple of (all_fold_results, global_summary).
     """
-    training_cfg = config.get('training', {})
-    data_cfg = config.get('data', {})
-    
-    folds = training_cfg.get('k_folds', 5)
-    repeats = training_cfg.get('k_fold_repeats', 1)
-    base_seed = training_cfg.get('seed', 42)
-    time_limit = data_cfg.get('time_limit_s', 1800.0)
-    feat_time_col = data_cfg.get('feat_time_column', '_feat_time_zero_')
-    
+    training_cfg = config.get("training", {})
+    data_cfg = config.get("data", {})
+
+    folds = training_cfg.get("k_folds", 5)
+    repeats = training_cfg.get("k_fold_repeats", 1)
+    base_seed = training_cfg.get("seed", 42)
+    time_limit = data_cfg.get("time_limit_s", 1800.0)
+    feat_time_col = data_cfg.get("feat_time_column", "_feat_time_zero_")
+
     # If feat_time_col doesn't exist, create it with zeros
     if feat_time_col not in df.columns:
         df[feat_time_col] = 0.0
-    
+
     metric_key = {
-        'classification': 'accuracy',
-        'multilabel': 'f1_micro',
-        'regression': 'mae',
+        "classification": "accuracy",
+        "multilabel": "f1_micro",
+        "regression": "mae",
     }[task]
-    
+
     all_results = []
     per_rep_summary = []
-    
+
     for rep in range(repeats):
         seed_rep = base_seed + rep
         rep_dir = os.path.join(root_outdir, f"rep_{rep+1}")
         os.makedirs(rep_dir, exist_ok=True)
-        
+
         print(f"\n{'='*60}")
         print(f"REPETITION {rep+1}/{repeats} (seed={seed_rep})")
         print(f"{'='*60}")
-        
+
         # Run K-Fold for this repetition
         fold_results, rep_summary = _run_single_kfold(
             df=df,
@@ -96,41 +96,44 @@ def run_kfold_with_repeats(
             time_limit=time_limit,
             feat_time_col=feat_time_col,
         )
-        
+
         all_results.extend([r[metric_key] for r in fold_results])
-        per_rep_summary.append({
-            'rep': rep + 1,
-            'mean': rep_summary['mean'],
-            'std': rep_summary['std'],
-        })
-        
-        print(f"[REP {rep+1}] {metric_key.upper()}: {rep_summary['mean']:.4f} ± {rep_summary['std']:.4f}")
-    
+        per_rep_summary.append(
+            {
+                "rep": rep + 1,
+                "mean": rep_summary["mean"],
+                "std": rep_summary["std"],
+            }
+        )
+
+        print(
+            f"[REP {rep+1}] {metric_key.upper()}: {rep_summary['mean']:.4f} ± {rep_summary['std']:.4f}"
+        )
+
     # Global summary across all repetitions
     global_mean = float(np.mean(all_results))
     global_std = float(np.std(all_results))
-    
+
     global_summary = {
-        'task': task,
-        'metric': metric_key,
-        'mean': global_mean,
-        'std': global_std,
-        'min': float(np.min(all_results)),
-        'max': float(np.max(all_results)),
-        'folds': folds,
-        'repeats': repeats,
+        "task": task,
+        "metric": metric_key,
+        "mean": global_mean,
+        "std": global_std,
+        "min": float(np.min(all_results)),
+        "max": float(np.max(all_results)),
+        "folds": folds,
+        "repeats": repeats,
     }
-    
+
     # Save per-repetition summary
     pd.DataFrame(per_rep_summary).to_csv(
-        os.path.join(root_outdir, "metrics_summary_per_rep.csv"),
-        index=False
+        os.path.join(root_outdir, "metrics_summary_per_rep.csv"), index=False
     )
-    
+
     # Save global summary
     with open(os.path.join(root_outdir, "metrics_summary_GLOBAL.json"), "w") as f:
         json.dump(global_summary, f, indent=2)
-    
+
     return all_results, global_summary
 
 
@@ -148,7 +151,7 @@ def _run_single_kfold(
 ) -> Tuple[List[Dict], Dict[str, float]]:
     """
     Run a single K-Fold cross-validation.
-    
+
     Internal function called by run_kfold_with_repeats.
     """
     # Setup splitter
@@ -156,17 +159,19 @@ def _run_single_kfold(
         labels = build_labels(df, solver_cols, task, use_score, time_limit)
         binc = np.bincount(labels)
         min_class = binc.min()
-        
+
         if min_class < folds:
-            print(f"⚠️  Minority class: {min_class} samples < folds={folds}. Adjusting to {max(2, min_class)}")
+            print(
+                f"⚠️  Minority class: {min_class} samples < folds={folds}. Adjusting to {max(2, min_class)}"
+            )
             folds = max(2, int(min_class))
-        
+
         splitter = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
         splits = splitter.split(df, labels)
     else:
         splitter = KFold(n_splits=folds, shuffle=True, random_state=seed)
         splits = splitter.split(df)
-    
+
     # Get solver names
     cols_for_names = (
         solver_cols["score"]
@@ -174,54 +179,72 @@ def _run_single_kfold(
         else solver_cols["runtime"]
     )
     solver_names = [
-        c.replace("_Runtime_s", "").replace("_Score_S_rel", "")
-        for c in cols_for_names
+        c.replace("_Runtime_s", "").replace("_Score_S_rel", "") for c in cols_for_names
     ]
-    
+
     fold_results = []
     per_fold_rows = []
-    
+
     for i, (tr, va) in enumerate(splits, start=1):
         fold_dir = os.path.join(outdir, f"fold_{i}")
         os.makedirs(fold_dir, exist_ok=True)
-        
+
         train_df = df.iloc[tr].reset_index(drop=True)
         val_df = df.iloc[va].reset_index(drop=True)
-        
+
         # Compute BSS baseline
         bss_idx_i = bss_index(train_df, solver_cols, use_score)
         bss_col = cols_for_names[bss_idx_i]
-        
+
         # BSS metrics
         from sklearn.metrics import accuracy_score, f1_score, mean_absolute_error
-        
+
         if task == "classification":
             y_val_true = build_labels(val_df, solver_cols, task, use_score, time_limit)
             y_bss = np.full_like(y_val_true, bss_idx_i)
             bss_metric = accuracy_score(y_val_true, y_bss)
-            bss_ast = compute_ast_bss(val_df, cols_for_names, bss_idx_i, feat_time_col, time_limit)
-            print(f"\n[FOLD {i}] BSS={bss_col} | BSS_acc={bss_metric:.4f} | BSS_AST={bss_ast:.1f}s")
+            bss_ast = compute_ast_bss(
+                val_df, cols_for_names, bss_idx_i, feat_time_col, time_limit
+            )
+            print(
+                f"\n[FOLD {i}] BSS={bss_col} | BSS_acc={bss_metric:.4f} | BSS_AST={bss_ast:.1f}s"
+            )
         elif task == "multilabel":
             from .data_utils import multilabel_targets
+
             rt_cols = solver_cols["runtime"]
             y_val_true = np.stack(
-                [multilabel_targets(r, rt_cols, time_limit) for _, r in val_df.iterrows()],
-                axis=0
+                [
+                    multilabel_targets(r, rt_cols, time_limit)
+                    for _, r in val_df.iterrows()
+                ],
+                axis=0,
             )
             y_bss = np.zeros_like(y_val_true)
             y_bss[:, bss_idx_i] = 1.0
-            bss_metric = f1_score(y_val_true.flatten(), y_bss.flatten(), average="micro", zero_division=0)
-            bss_ast = compute_ast_bss(val_df, rt_cols, bss_idx_i, feat_time_col, time_limit)
-            print(f"\n[FOLD {i}] BSS={bss_col} | BSS_f1_micro={bss_metric:.4f} | BSS_AST={bss_ast:.1f}s")
+            bss_metric = f1_score(
+                y_val_true.flatten(), y_bss.flatten(), average="micro", zero_division=0
+            )
+            bss_ast = compute_ast_bss(
+                val_df, rt_cols, bss_idx_i, feat_time_col, time_limit
+            )
+            print(
+                f"\n[FOLD {i}] BSS={bss_col} | BSS_f1_micro={bss_metric:.4f} | BSS_AST={bss_ast:.1f}s"
+            )
         else:  # regression
             rt_cols = solver_cols["runtime"]
-            const_pred = train_df[rt_cols[bss_idx_i]].astype(float).fillna(time_limit * 10).mean()
+            const_pred = (
+                train_df[rt_cols[bss_idx_i]]
+                .astype(float)
+                .fillna(time_limit * 10)
+                .mean()
+            )
             y_val_true = val_df[rt_cols].astype(float).fillna(time_limit * 10).values
             y_bss = np.full_like(y_val_true, const_pred)
             bss_metric = mean_absolute_error(y_val_true, y_bss)
             bss_ast = None
             print(f"\n[FOLD {i}] BSS={bss_col} | BSS_mae={bss_metric:.4f}")
-        
+
         # Train fold (reuse base training)
         print(f"[FOLD {i}] Training model...")
         model, train_metrics, y_true, y_pred = _train_fold_base(
@@ -234,7 +257,7 @@ def _run_single_kfold(
             fold_dir=fold_dir,
             fold_idx=i,
         )
-        
+
         # Evaluate with SAT-specific metrics
         eval_metrics = evaluate_fold(
             y_true=y_true,
@@ -247,7 +270,7 @@ def _run_single_kfold(
             solver_runtime_cols=cols_for_names,
             config=config,
         )
-        
+
         # Combine metrics
         fold_result = {
             "fold": i,
@@ -256,48 +279,49 @@ def _run_single_kfold(
             **train_metrics,
             **eval_metrics,
         }
-        
+
         if bss_ast is not None:
             fold_result["bss_ast"] = bss_ast
-        
+
         fold_results.append(fold_result)
-        
+
         # Save fold metrics
         with open(os.path.join(fold_dir, f"fold{i}_metrics.json"), "w") as f:
             json.dump(fold_result, f, indent=2)
-        
+
         print(f"[FOLD {i}] Metrics: {eval_metrics}")
-    
+
     # Save per-fold table
     fold_df = pd.DataFrame(fold_results)
     fold_df.to_csv(os.path.join(outdir, "metrics_per_fold.csv"), index=False)
-    
+
     # Compute summary
     metric_key = {
-        'classification': 'accuracy',
-        'multilabel': 'f1_micro',
-        'regression': 'mae',
+        "classification": "accuracy",
+        "multilabel": "f1_micro",
+        "regression": "mae",
     }[task]
-    
+
     metric_values = [r[metric_key] for r in fold_results]
     summary = {
-        'task': task,
-        'metric': metric_key,
-        'mean': float(np.mean(metric_values)),
-        'std': float(np.std(metric_values)),
-        'min': float(np.min(metric_values)),
-        'max': float(np.max(metric_values)),
-        'folds': folds,
+        "task": task,
+        "metric": metric_key,
+        "mean": float(np.mean(metric_values)),
+        "std": float(np.std(metric_values)),
+        "min": float(np.min(metric_values)),
+        "max": float(np.max(metric_values)),
+        "folds": folds,
     }
-    
+
     # Save summary
     with open(os.path.join(outdir, "metrics_summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
-    
+
     # Plot metrics per fold
     from .visualization import plot_metrics_per_fold
+
     plot_metrics_per_fold(fold_results, metric_key, outdir)
-    
+
     return fold_results, summary
 
 
@@ -305,6 +329,6 @@ def _run_single_kfold(
 run_kfold = run_kfold_with_repeats
 
 __all__ = [
-    'run_kfold',
-    'run_kfold_with_repeats',
+    "run_kfold",
+    "run_kfold_with_repeats",
 ]

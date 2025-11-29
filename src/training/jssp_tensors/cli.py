@@ -7,17 +7,17 @@ Adapted from jssp_images CLI for 3D tensor inputs.
 
 import argparse
 import os
+import random
 import sys
 import time
 from datetime import datetime
 
-import pandas as pd
 import numpy as np
-import random
+import pandas as pd
 import tensorflow as tf
 
 from .config_loader import load_config, merge_cli_args, resolve_paths
-from .data_utils import detect_solver_cols, normalize_image_paths, filter_valid_images
+from .data_utils import detect_solver_cols, filter_valid_images, normalize_image_paths
 from .training_loop import run_kfold
 from .visualization import plot_metrics_per_fold
 
@@ -39,22 +39,27 @@ def parse_arguments() -> argparse.Namespace:
 Examples:
   python -m src.training.jssp_tensors.cli --csv data.csv --task classification
   python -m src.training.jssp_tensors.cli --csv data.csv --task regression --epochs 30
-        """
+        """,
     )
-    
+
     parser.add_argument(
-        "--csv", type=str, required=True,
-        help="Path to CSV with Image_Npy_Path (tensor paths) and solver columns"
+        "--csv",
+        type=str,
+        required=True,
+        help="Path to CSV with Image_Npy_Path (tensor paths) and solver columns",
     )
     parser.add_argument(
-        "--task", type=str, required=True,
+        "--task",
+        type=str,
+        required=True,
         choices=["classification", "multilabel", "regression"],
-        help="Task type"
+        help="Task type",
     )
     parser.add_argument(
-        "--config", type=str,
+        "--config",
+        type=str,
         default="src/training/jssp_tensors/config.yaml",
-        help="Path to config YAML"
+        help="Path to config YAML",
     )
     parser.add_argument("--use_score", action="store_true")
     parser.add_argument("--epochs", type=int)
@@ -64,7 +69,7 @@ Examples:
     parser.add_argument("--out_parent", type=str)
     parser.add_argument("--run_name", type=str)
     parser.add_argument("--seed", type=int)
-    
+
     return parser.parse_args()
 
 
@@ -75,22 +80,27 @@ def prepare_output_directory(config: dict, task: str) -> str:
     run_name = output_cfg.get("run_name", "jssp_tensors_cnn")
     timestamp_fmt = output_cfg.get("timestamp_format", "%Y%m%d_%H%M%S")
     append_task = output_cfg.get("append_task_to_dirname", True)
-    
+
     timestamp = datetime.now().strftime(timestamp_fmt)
-    run_dirname = f"{run_name}_{task}_{timestamp}" if append_task else f"{run_name}_{timestamp}"
+    run_dirname = (
+        f"{run_name}_{task}_{timestamp}" if append_task else f"{run_name}_{timestamp}"
+    )
     outdir = os.path.join(parent_dir, run_dirname)
     os.makedirs(outdir, exist_ok=True)
     return outdir
 
 
-def save_run_info(outdir: str, config: dict, args: argparse.Namespace, df: pd.DataFrame) -> None:
+def save_run_info(
+    outdir: str, config: dict, args: argparse.Namespace, df: pd.DataFrame
+) -> None:
     """Save run information."""
     import json
+
     import yaml
-    
+
     with open(os.path.join(outdir, "config.yaml"), "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-    
+
     run_info = {
         "task": args.task,
         "csv_path": args.csv,
@@ -99,7 +109,7 @@ def save_run_info(outdir: str, config: dict, args: argparse.Namespace, df: pd.Da
         "timestamp": datetime.now().isoformat(),
         "command": " ".join(sys.argv),
     }
-    
+
     with open(os.path.join(outdir, "run_info.json"), "w") as f:
         json.dump(run_info, f, indent=2)
 
@@ -107,58 +117,58 @@ def save_run_info(outdir: str, config: dict, args: argparse.Namespace, df: pd.Da
 def main():
     """Main CLI entry point."""
     args = parse_arguments()
-    
+
     print(f"Loading configuration from: {args.config}")
     config = load_config(args.config)
     config = merge_cli_args(config, args)
     config = resolve_paths(config)
-    
+
     seed = config.get("training", {}).get("seed", 42)
     setup_reproducibility(seed)
     print(f"Random seed: {seed}")
-    
+
     print(f"\nLoading CSV: {args.csv}")
     if not os.path.exists(args.csv):
         print(f"❌ CSV not found: {args.csv}")
         sys.exit(1)
-    
+
     df = pd.read_csv(args.csv)
     print(f"Loaded {len(df)} rows")
-    
+
     if "Image_Npy_Path" not in df.columns:
         print("❌ CSV must contain 'Image_Npy_Path' column")
         sys.exit(1)
-    
+
     print("\nNormalizing tensor paths...")
     df = normalize_image_paths(df, "Image_Npy_Path")
-    
+
     print("Filtering valid tensors...")
     df, missing_count = filter_valid_images(df)
-    
+
     if missing_count > 0:
         print(f"⚠️  Removed {missing_count} rows with missing tensors")
-    
+
     if len(df) == 0:
         print("❌ No valid tensors found")
         sys.exit(1)
-    
+
     print(f"✓ {len(df)} valid instances")
-    
+
     print("\nDetecting solver columns...")
     try:
         solver_cols = detect_solver_cols(df)
         print(f"✓ {len(solver_cols['runtime'])} runtime columns")
-        if solver_cols['score']:
+        if solver_cols["score"]:
             print(f"✓ {len(solver_cols['score'])} score columns")
     except ValueError as e:
         print(f"❌ {e}")
         sys.exit(1)
-    
+
     outdir = prepare_output_directory(config, args.task)
     print(f"\n📁 Output: {outdir}")
-    
+
     save_run_info(outdir, config, args, df)
-    
+
     training_cfg = config.get("training", {})
     print(f"\n{'='*60}")
     print("TRAINING CONFIGURATION")
@@ -170,9 +180,9 @@ def main():
     print(f"K-Folds: {training_cfg.get('k_folds', 5)}")
     print(f"Learning rate: {training_cfg.get('learning_rate', 1e-3)}")
     print(f"{'='*60}\n")
-    
+
     start_time = time.time()
-    
+
     try:
         fold_results, summary = run_kfold(
             df=df,
@@ -185,14 +195,15 @@ def main():
     except Exception as e:
         print(f"\n❌ Training error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
-    
+
     elapsed_time = time.time() - start_time
-    
+
     metric_key = summary["metric"]
     plot_metrics_per_fold(fold_results, metric_key, outdir)
-    
+
     print(f"\n{'='*60}")
     print("FINAL RESULTS")
     print(f"{'='*60}")
@@ -203,7 +214,7 @@ def main():
     print(f"Range: [{summary['min']:.4f}, {summary['max']:.4f}]")
     print(f"Time: {elapsed_time:.2f}s ({elapsed_time/60:.2f}m)")
     print(f"{'='*60}\n")
-    
+
     readme_path = os.path.join(outdir, "README.txt")
     with open(readme_path, "w") as f:
         f.write("JSSP Tensor-Based Solver Selection - Training Results\n")
@@ -223,7 +234,7 @@ def main():
         f.write("  - metrics_summary.json\n")
         f.write(f"  - {metric_key}_per_fold.png\n")
         f.write("  - fold_*/\n")
-    
+
     print(f"✓ Results: {outdir}")
     print(f"✓ Summary: {readme_path}")
 

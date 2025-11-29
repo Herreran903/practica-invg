@@ -9,16 +9,17 @@ This module handles:
 - Per-fold predictions and metrics persistence
 """
 
-import os
 import json
+import os
+from typing import Dict, List, Literal, Tuple
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from typing import Literal, Tuple, Dict, List
 from sklearn.model_selection import KFold, StratifiedKFold
 
+from .data_utils import bss_index, build_labels, make_dataset
 from .model_builder import build_model_from_config
-from .data_utils import build_labels, make_dataset, bss_index
 
 
 def train_fold(
@@ -63,19 +64,19 @@ def train_fold(
     # Extract configuration parameters
     training_cfg = config.get("training", {})
     data_cfg = config.get("data", {})
-    
+
     epochs = training_cfg.get("epochs", 25)
     batch_size = training_cfg.get("batch_size", 64)
     patience = training_cfg.get("early_stopping_patience", 6)
-    
+
     # Build labels
     y_train = build_labels(train_df, solver_cols, task, use_score)
     y_val = build_labels(val_df, solver_cols, task, use_score)
-    
+
     # Get image paths
     paths_train = train_df["Image_Npy_Path"].tolist()
     paths_val = val_df["Image_Npy_Path"].tolist()
-    
+
     # Determine output dimension
     if task == "classification":
         cols = (
@@ -86,7 +87,7 @@ def train_fold(
         output_dim = len(cols)
     else:
         output_dim = len(solver_cols["runtime"])
-    
+
     # Create datasets
     ds_train = make_dataset(
         paths=paths_train,
@@ -104,10 +105,10 @@ def train_fold(
         shuffle=False,
         config=config,
     )
-    
+
     # Build model
     model = build_model_from_config(config, output_dim=output_dim, task=task)
-    
+
     # Setup callbacks
     callbacks = [
         tf.keras.callbacks.EarlyStopping(
@@ -117,7 +118,7 @@ def train_fold(
             verbose=1,
         )
     ]
-    
+
     # Train model
     print(f"[FOLD {fold_idx}] Training model...")
     history = model.fit(
@@ -127,14 +128,14 @@ def train_fold(
         callbacks=callbacks,
         verbose=1,
     )
-    
+
     # Inference on validation set (batch by batch to avoid retracing)
     print(f"[FOLD {fold_idx}] Running inference on validation set...")
     y_true_list, y_pred_list, y_score_list = [], [], []
-    
+
     for xb, yb in ds_val:
         out = model(xb, training=False).numpy()
-        
+
         if task == "classification":
             y_true_list.append(yb.numpy())
             y_pred_list.append(np.argmax(out, axis=1))
@@ -145,27 +146,27 @@ def train_fold(
         else:  # regression
             y_true_list.append(yb.numpy())
             y_pred_list.append(out)
-    
+
     # Consolidate predictions
     y_true = np.concatenate(y_true_list, axis=0)
     y_pred = np.concatenate(y_pred_list, axis=0)
-    
+
     # Save predictions
     np.save(os.path.join(fold_dir, f"fold{fold_idx}_y_true.npy"), y_true)
     np.save(os.path.join(fold_dir, f"fold{fold_idx}_y_pred.npy"), y_pred)
-    
+
     # For multilabel, also save scores
     if task == "multilabel" and y_score_list:
         y_scores = np.concatenate(y_score_list, axis=0)
         np.save(os.path.join(fold_dir, f"fold{fold_idx}_y_scores.npy"), y_scores)
-    
+
     # Extract training metrics from history
     metrics = {
         "final_train_loss": float(history.history["loss"][-1]),
         "final_val_loss": float(history.history["val_loss"][-1]),
         "epochs_trained": len(history.history["loss"]),
     }
-    
+
     return model, metrics, y_true, y_pred
 
 
@@ -195,15 +196,16 @@ def compute_bss_baseline(
         Tuple of (baseline_metric, metric_name).
     """
     from sklearn.metrics import accuracy_score, f1_score, mean_absolute_error
+
     from .data_utils import multilabel_targets
-    
+
     cols = (
         solver_cols["score"]
         if (use_score and solver_cols["score"])
         else solver_cols["runtime"]
     )
     bss_col = cols[bss_idx]
-    
+
     if task == "classification":
         y_val_true = build_labels(val_df, solver_cols, task, use_score)
         y_bss = np.full_like(y_val_true, bss_idx)
@@ -223,12 +225,14 @@ def compute_bss_baseline(
         metric_name = "f1_micro"
     else:  # regression
         rt_cols = solver_cols["runtime"]
-        const_pred = val_df[rt_cols[bss_idx]].astype(float).fillna(time_limit * 10).mean()
+        const_pred = (
+            val_df[rt_cols[bss_idx]].astype(float).fillna(time_limit * 10).mean()
+        )
         y_val_true = val_df[rt_cols].astype(float).fillna(time_limit * 10).values
         y_bss = np.full_like(y_val_true, const_pred)
         baseline_metric = mean_absolute_error(y_val_true, y_bss)
         metric_name = "mae"
-    
+
     return baseline_metric, metric_name
 
 
@@ -267,33 +271,33 @@ def run_kfold(
         Adjusts number of folds if minority class is too small.
     """
     from .evaluation import evaluate_fold
-    
+
     training_cfg = config.get("training", {})
     data_cfg = config.get("data", {})
-    
+
     folds = training_cfg.get("k_folds", 5)
     time_limit = data_cfg.get("time_limit_s", 60.0)
     seed = training_cfg.get("seed", 42)
-    
+
     # Setup K-Fold splitter
     if task == "classification":
         labels = build_labels(df, solver_cols, task, use_score)
         binc = np.bincount(labels)
         min_class = binc.min()
-        
+
         if min_class < folds:
             print(
                 f"⚠️  Minority class has {min_class} samples < folds={folds}. "
                 f"Adjusting folds to {max(2, min_class)}."
             )
             folds = max(2, int(min_class))
-        
+
         splitter = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
         splits = splitter.split(df, labels)
     else:
         splitter = KFold(n_splits=folds, shuffle=True, random_state=seed)
         splits = splitter.split(df)
-    
+
     # Get solver names for reporting
     cols_for_names = (
         solver_cols["score"]
@@ -303,35 +307,35 @@ def run_kfold(
     solver_names = [
         c.replace("_Runtime_s", "").replace("_Score_S_rel", "") for c in cols_for_names
     ]
-    
+
     # Train and evaluate each fold
     fold_results = []
-    
+
     for i, (tr, va) in enumerate(splits, start=1):
         fold_dir = os.path.join(root_outdir, f"fold_{i}")
         os.makedirs(fold_dir, exist_ok=True)
-        
+
         train_df = df.iloc[tr].reset_index(drop=True)
         val_df = df.iloc[va].reset_index(drop=True)
-        
+
         # Compute BSS baseline
         bss_idx_i = bss_index(train_df, solver_cols, use_score)
         baseline_metric, metric_name = compute_bss_baseline(
             val_df, bss_idx_i, solver_cols, task, use_score, time_limit
         )
-        
+
         cols = (
             solver_cols["score"]
             if (use_score and solver_cols["score"])
             else solver_cols["runtime"]
         )
         bss_col = cols[bss_idx_i]
-        
+
         print(f"\n{'='*60}")
         print(f"FOLD {i}/{folds}")
         print(f"{'='*60}")
         print(f"BSS: {bss_col} | BSS {metric_name}: {baseline_metric:.4f}")
-        
+
         # Train fold
         model, train_metrics, y_true, y_pred = train_fold(
             train_df=train_df,
@@ -343,7 +347,7 @@ def run_kfold(
             fold_dir=fold_dir,
             fold_idx=i,
         )
-        
+
         # Evaluate fold (compute metrics and generate visualizations)
         eval_metrics = evaluate_fold(
             y_true=y_true,
@@ -353,7 +357,7 @@ def run_kfold(
             fold_dir=fold_dir,
             fold_idx=i,
         )
-        
+
         # Combine metrics
         fold_result = {
             "fold": i,
@@ -362,26 +366,26 @@ def run_kfold(
             **train_metrics,
             **eval_metrics,
         }
-        
+
         fold_results.append(fold_result)
-        
+
         # Save fold metrics
         with open(os.path.join(fold_dir, f"fold{i}_metrics.json"), "w") as f:
             json.dump(fold_result, f, indent=2)
-        
+
         print(f"[FOLD {i}] Validation metrics: {eval_metrics}")
-    
+
     # Save per-fold results table
     fold_df = pd.DataFrame(fold_results)
     fold_df.to_csv(os.path.join(root_outdir, "metrics_per_fold.csv"), index=False)
-    
+
     # Compute aggregated statistics
     metric_key = {
         "classification": "accuracy",
         "multilabel": "f1_micro",
         "regression": "mae",
     }[task]
-    
+
     metric_values = [r[metric_key] for r in fold_results]
     summary = {
         "task": task,
@@ -392,15 +396,15 @@ def run_kfold(
         "max": float(np.max(metric_values)),
         "folds": folds,
     }
-    
+
     # Save summary
     with open(os.path.join(root_outdir, "metrics_summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
-    
+
     print(f"\n{'='*60}")
     print(f"FINAL RESULTS ({task})")
     print(f"{'='*60}")
     print(f"{metric_key.upper()}: {summary['mean']:.4f} ± {summary['std']:.4f}")
     print(f"Range: [{summary['min']:.4f}, {summary['max']:.4f}]")
-    
+
     return fold_results, summary

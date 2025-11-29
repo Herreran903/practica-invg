@@ -58,14 +58,18 @@ def _parse_dzn_array2d(name: str, text: str) -> List[int]:
     pattern = rf"{name}\s*=\s*array2d\([^,]+,[^,]+,\s*\[(.*?)\]\s*\)\s*;"
     m = re.search(pattern, text, flags=re.DOTALL)
     if not m:
-        raise ValueError(f"No se encontró la definición de {name} como array2d en el .dzn")
+        raise ValueError(
+            f"No se encontró la definición de {name} como array2d en el .dzn"
+        )
 
     inside = m.group(1)
     tokens = [t.strip() for t in inside.replace("\n", " ").split(",") if t.strip()]
     try:
         values = [int(tok) for tok in tokens]
     except ValueError as e:
-        raise ValueError(f"No se pudieron convertir los valores de {name} a enteros") from e
+        raise ValueError(
+            f"No se pudieron convertir los valores de {name} a enteros"
+        ) from e
     return values
 
 

@@ -19,7 +19,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
-
 # ---------- Logging ----------
 
 logger = logging.getLogger(__name__)
@@ -53,6 +52,7 @@ def is_supported_image_ext(path: str) -> bool:
 
 # ---------- Loading helpers ----------
 
+
 def load_pil_image(path: str) -> np.ndarray:
     """
     Load an image using Pillow and return as numpy array in either HxW (grayscale)
@@ -81,6 +81,7 @@ def load_pil_image(path: str) -> np.ndarray:
 def _lazy_import_torch():
     try:
         import torch  # type: ignore
+
         return torch
     except Exception as e:
         raise ImportError(
@@ -96,7 +97,9 @@ def _to_numpy_from_torch_tensor(t):
     return None
 
 
-def _select_from_mapping(mapping: Mapping, key: Optional[str]) -> Union[np.ndarray, None]:
+def _select_from_mapping(
+    mapping: Mapping, key: Optional[str]
+) -> Union[np.ndarray, None]:
     """
     Try to select a tensor/array from a mapping (e.g., state dict) using an optional key.
     If no key is given, and exactly one candidate tensor/array exists, return it.
@@ -243,7 +246,9 @@ def load_tensor_like(
                 "Pickle contains multiple arrays/tensors. Provide --key to select one."
             )
 
-        raise ValueError("Unsupported object in pickle; expected ndarray or torch.Tensor.")
+        raise ValueError(
+            "Unsupported object in pickle; expected ndarray or torch.Tensor."
+        )
 
     raise ValueError(
         f"Unsupported tensor file extension: '{ext}'. "
@@ -252,6 +257,7 @@ def load_tensor_like(
 
 
 # ---------- Normalization ----------
+
 
 def minmax_normalize(
     arr: np.ndarray,
@@ -313,6 +319,7 @@ def minmax_normalize(
 
 
 # ---------- Channel order inference ----------
+
 
 def infer_channel_order(arr: np.ndarray) -> str:
     """
@@ -380,6 +387,7 @@ def ensure_hwc(arr: np.ndarray, channel_order: str) -> np.ndarray:
 
 
 # ---------- Rendering helpers ----------
+
 
 def prepare_for_display(
     arr: np.ndarray,
@@ -465,7 +473,9 @@ def render_figure(
         else:
             # For RGB/RGBA, ignore cmap by default
             if cmap and cmap.lower() != "none":
-                logger.info("Colormap specified for RGB image; matplotlib will ignore it.")
+                logger.info(
+                    "Colormap specified for RGB image; matplotlib will ignore it."
+                )
             # Ensure values in [0,1] for float images
             to_show = img
             if to_show.dtype.kind == "f":

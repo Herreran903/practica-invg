@@ -26,13 +26,20 @@ Usage:
 
 from .config_loader import load_config, merge_cli_args, resolve_paths
 from .data_utils import (
-    detect_solver_cols,
+    bss_index,
     build_labels,
+    detect_solver_cols,
+    filter_valid_images,
+    load_tensor_npy,
     make_dataset,
     normalize_image_paths,
-    filter_valid_images,
-    bss_index,
-    load_tensor_npy,
+)
+from .evaluation import (
+    aggregate_fold_metrics,
+    evaluate_classification,
+    evaluate_fold,
+    evaluate_multilabel,
+    evaluate_regression,
 )
 from .model_builder import (
     build_cnn,
@@ -40,24 +47,17 @@ from .model_builder import (
     get_model_summary,
 )
 from .training_loop import (
-    train_fold,
-    run_kfold,
     compute_bss_baseline,
-)
-from .evaluation import (
-    evaluate_fold,
-    evaluate_classification,
-    evaluate_multilabel,
-    evaluate_regression,
-    aggregate_fold_metrics,
+    run_kfold,
+    train_fold,
 )
 from .visualization import (
-    plot_confusion_matrix,
     plot_class_bars,
-    plot_pr_curves_multilabel,
+    plot_confusion_matrix,
     plot_f1_bars_multilabel,
-    plot_regression_scatter,
     plot_metrics_per_fold,
+    plot_pr_curves_multilabel,
+    plot_regression_scatter,
     plot_training_history,
 )
 

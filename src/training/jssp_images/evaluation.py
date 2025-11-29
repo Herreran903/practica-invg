@@ -9,15 +9,16 @@ This module computes task-specific metrics:
 """
 
 import os
+from typing import Dict, List, Literal
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Literal
 from sklearn.metrics import (
     accuracy_score,
-    f1_score,
-    classification_report,
-    mean_absolute_error,
     average_precision_score,
+    classification_report,
+    f1_score,
+    mean_absolute_error,
 )
 
 
@@ -49,7 +50,7 @@ def evaluate_classification(
     # Overall metrics
     acc = accuracy_score(y_true, y_pred)
     f1_macro = f1_score(y_true, y_pred, average="macro", zero_division=0)
-    
+
     # Detailed classification report
     labels_full = list(range(len(solver_names)))
     report = classification_report(
@@ -60,11 +61,11 @@ def evaluate_classification(
         output_dict=True,
         zero_division=0,
     )
-    
+
     # Save report as CSV
     report_df = pd.DataFrame(report).transpose()
     report_df.to_csv(os.path.join(fold_dir, f"fold{fold_idx}_cls_report.csv"))
-    
+
     return {
         "accuracy": float(acc),
         "f1_macro": float(f1_macro),
@@ -100,47 +101,47 @@ def evaluate_multilabel(
     f1_micro = f1_score(
         y_true.flatten(), y_pred.flatten(), average="micro", zero_division=0
     )
-    
+
     # Per-label F1
     f1_per_label = []
     for j in range(y_true.shape[1]):
         f1_j = f1_score(y_true[:, j], y_pred[:, j], zero_division=0)
         f1_per_label.append(f1_j)
-    
+
     f1_macro = float(np.mean(f1_per_label))
-    
+
     # Save per-label F1
     f1_df = pd.DataFrame({"label": solver_names, "F1": f1_per_label})
-    f1_df.to_csv(os.path.join(fold_dir, f"fold{fold_idx}_f1_per_label.csv"), index=False)
-    
+    f1_df.to_csv(
+        os.path.join(fold_dir, f"fold{fold_idx}_f1_per_label.csv"), index=False
+    )
+
     # Try to load scores for AP computation
     scores_path = os.path.join(fold_dir, f"fold{fold_idx}_y_scores.npy")
     if os.path.exists(scores_path):
         y_scores = np.load(scores_path)
         ap_per_label = {}
-        
+
         for j, name in enumerate(solver_names):
             yt = y_true[:, j]
             ys = y_scores[:, j]
-            
+
             # Skip if only one class present
             if np.unique(yt).size < 2:
                 continue
-            
+
             ap = average_precision_score(yt, ys)
             ap_per_label[name] = ap
-        
+
         # Save AP per label
         if ap_per_label:
-            ap_df = pd.DataFrame({
-                "label": list(ap_per_label.keys()),
-                "AP": list(ap_per_label.values())
-            })
-            ap_df.to_csv(
-                os.path.join(fold_dir, f"fold{fold_idx}_ap_per_label.csv"),
-                index=False
+            ap_df = pd.DataFrame(
+                {"label": list(ap_per_label.keys()), "AP": list(ap_per_label.values())}
             )
-    
+            ap_df.to_csv(
+                os.path.join(fold_dir, f"fold{fold_idx}_ap_per_label.csv"), index=False
+            )
+
     return {
         "f1_micro": float(f1_micro),
         "f1_macro": float(f1_macro),
@@ -173,20 +174,19 @@ def evaluate_regression(
     """
     # Overall MAE
     mae_overall = mean_absolute_error(y_true, y_pred)
-    
+
     # Per-solver MAE
     mae_per_solver = []
     for j in range(y_true.shape[1]):
         mae_j = mean_absolute_error(y_true[:, j], y_pred[:, j])
         mae_per_solver.append(mae_j)
-    
+
     # Save per-solver MAE
     mae_df = pd.DataFrame({"solver": solver_names, "MAE": mae_per_solver})
     mae_df.to_csv(
-        os.path.join(fold_dir, f"fold{fold_idx}_mae_per_solver.csv"),
-        index=False
+        os.path.join(fold_dir, f"fold{fold_idx}_mae_per_solver.csv"), index=False
     )
-    
+
     return {
         "mae": float(mae_overall),
     }
@@ -222,50 +222,36 @@ def evaluate_fold(
         Visualization is triggered here but implemented in visualization.py.
     """
     from .visualization import (
-        plot_confusion_matrix,
         plot_class_bars,
-        plot_pr_curves_multilabel,
+        plot_confusion_matrix,
         plot_f1_bars_multilabel,
+        plot_pr_curves_multilabel,
         plot_regression_scatter,
     )
-    
+
     # Compute metrics based on task
     if task == "classification":
         metrics = evaluate_classification(
             y_true, y_pred, solver_names, fold_dir, fold_idx
         )
-        
+
         # Generate visualizations
-        plot_confusion_matrix(
-            y_true, y_pred, solver_names, fold_dir, fold_idx
-        )
-        plot_class_bars(
-            y_true, y_pred, solver_names, fold_dir, fold_idx
-        )
-        
+        plot_confusion_matrix(y_true, y_pred, solver_names, fold_dir, fold_idx)
+        plot_class_bars(y_true, y_pred, solver_names, fold_dir, fold_idx)
+
     elif task == "multilabel":
-        metrics = evaluate_multilabel(
-            y_true, y_pred, solver_names, fold_dir, fold_idx
-        )
-        
+        metrics = evaluate_multilabel(y_true, y_pred, solver_names, fold_dir, fold_idx)
+
         # Generate visualizations
-        plot_pr_curves_multilabel(
-            y_true, solver_names, fold_dir, fold_idx
-        )
-        plot_f1_bars_multilabel(
-            y_true, y_pred, solver_names, fold_dir, fold_idx
-        )
-        
+        plot_pr_curves_multilabel(y_true, solver_names, fold_dir, fold_idx)
+        plot_f1_bars_multilabel(y_true, y_pred, solver_names, fold_dir, fold_idx)
+
     else:  # regression
-        metrics = evaluate_regression(
-            y_true, y_pred, solver_names, fold_dir, fold_idx
-        )
-        
+        metrics = evaluate_regression(y_true, y_pred, solver_names, fold_dir, fold_idx)
+
         # Generate visualizations
-        plot_regression_scatter(
-            y_true, y_pred, solver_names, fold_dir, fold_idx
-        )
-    
+        plot_regression_scatter(y_true, y_pred, solver_names, fold_dir, fold_idx)
+
     return metrics
 
 
@@ -284,7 +270,7 @@ def aggregate_fold_metrics(
         Dictionary with 'mean', 'std', 'min', 'max' statistics.
     """
     values = [r[metric_key] for r in fold_results if metric_key in r]
-    
+
     if not values:
         return {
             "mean": 0.0,
@@ -292,7 +278,7 @@ def aggregate_fold_metrics(
             "min": 0.0,
             "max": 0.0,
         }
-    
+
     return {
         "mean": float(np.mean(values)),
         "std": float(np.std(values)),

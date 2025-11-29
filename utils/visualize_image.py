@@ -140,7 +140,9 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     try:
         arr = load_pil_image(args.path)
-        logger.info("Loaded image %s with shape %s", args.path, getattr(arr, "shape", None))
+        logger.info(
+            "Loaded image %s with shape %s", args.path, getattr(arr, "shape", None)
+        )
 
         # Prepare
         disp, is_rgb = prepare_for_display(

@@ -580,9 +580,7 @@ def run_kfold(df, task, solver_cols, use_score, epochs, batch, folds, root_outdi
                 .fillna(TIME_LIMIT_S * 10)
                 .mean()
             )
-            y_val_true = (
-                val_df[rt_cols].astype(float).fillna(TIME_LIMIT_S * 10).values
-            )
+            y_val_true = val_df[rt_cols].astype(float).fillna(TIME_LIMIT_S * 10).values
             y_bss = np.full_like(y_val_true, const_pred)
             bss_acc = mean_absolute_error(y_val_true, y_bss)
             print(f"\n[FOLD {i}] BSS={bss_col} | BSS_mae={bss_acc:.4f}")
