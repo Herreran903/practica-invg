@@ -1,24 +1,20 @@
 """
-Visualize tensor-like files (.npy, .npz, .pt, .pth, .pkl) with a consistent CLI.
+Visualize common image files with a consistent CLI.
 
-Supported formats:
-- NumPy: .npy, .npz
-- PyTorch: .pt, .pth
-- Pickle: .pkl (containing a NumPy array or torch.Tensor)
+Supported formats: .png, .jpg, .jpeg, .bmp, .tif, .tiff
 
 CLI
 ----
 Positional:
-- path: Path to the tensor file to visualize.
+- path: Path to the image file.
 
 Options:
-- --key NAME                 Optional key for .npz or mapping-like .pt/.pth/.pkl files.
-- --normalize / --no-normalize
-                            Min-max normalization to [0, 1] (default: on).
+- --normalize               Apply min-max normalization to [0, 1] before display (default: off).
 - --channel-order {auto,chw,hwc}
-                            Channel order handling for 3D tensors (default: auto).
+                            Channel order handling for 3D images (default: auto).
+                            For typical PIL-loaded images this is already HWC.
 - --cmap {gray,viridis,magma,none}
-                            Colormap (default: gray for 2D; none for RGB).
+                            Colormap (default: none for RGB; gray for 2D).
 - --title TEXT              Figure title.
 - --save OUTPUT_PATH        Save the rendered figure to this path.
 - --dpi INT                 Figure DPI (default: 120).
@@ -27,8 +23,7 @@ Options:
 
 Examples
 --------
-python -m utils.visualize_tensor runs/feat.npy --normalize --channel-order chw
-python -m utils.visualize_tensor runs/weights.pt --key features --normalize --no-show
+python -m utils.visualize_image data/samples/cat.jpg --title "Sample" --save out.png --no-show
 """
 
 from __future__ import annotations
@@ -39,14 +34,26 @@ import os
 import sys
 from typing import Optional
 
-import numpy as np
+# numpy not required directly here
 
-from .visualize_common import (
-    load_tensor_like,
-    prepare_for_display,
-    render_figure,
-)
-
+# Support both "python -m utils.visualize_image" (package context)
+# and "python utils/visualize_image.py" (script context from repo root).
+try:
+    # Prefer absolute import when running as a script from the repo root
+    from utils.visualize_common import (
+        is_supported_image_ext,
+        load_pil_image,
+        prepare_for_display,
+        render_figure,
+    )
+except Exception:
+    # Fallback when executed as a module within the package
+    from .visualize_common import (  # type: ignore
+        is_supported_image_ext,
+        load_pil_image,
+        prepare_for_display,
+        render_figure,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -72,43 +79,27 @@ def _validate_channel_order(order: str) -> str:
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
-    # BooleanOptionalAction allows --normalize / --no-normalize, default True
-    try:
-        action_bool_opt = argparse.BooleanOptionalAction  # type: ignore[attr-defined]
-    except Exception:
-        # Fallback for very old Python (not expected per project requirements)
-        class action_bool_opt(argparse.Action):  # type: ignore
-            def __call__(self, parser, namespace, values, option_string=None):
-                setattr(namespace, self.dest, option_string and "no-" not in option_string)
-
     parser = argparse.ArgumentParser(
-        description="Visualize a tensor-like file (.npy/.npz/.pt/.pth/.pkl) as an image.",
+        description="Visualize an image file with a consistent CLI.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("path", type=str, help="Path to the tensor file to visualize.")
-    parser.add_argument(
-        "--key",
-        type=str,
-        default=None,
-        help="Optional key for .npz or mapping-like .pt/.pth/.pkl files.",
-    )
+    parser.add_argument("path", type=str, help="Path to the image file to visualize.")
     parser.add_argument(
         "--normalize",
-        action=action_bool_opt,
-        default=True,
-        help="Apply min-max normalization to [0, 1] before display (default: on).",
+        action="store_true",
+        help="Apply min-max normalization to [0, 1] before display (default: off).",
     )
     parser.add_argument(
         "--channel-order",
         type=_validate_channel_order,
         default="auto",
-        help="Channel order for 3D tensors.",
+        help="Channel order for 3D images.",
     )
     parser.add_argument(
         "--cmap",
         type=_validate_cmap,
         default="none",
-        help="Colormap for single-channel images (ignored for RGB unless explicitly set).",
+        help="Colormap (ignored for RGB unless explicitly set).",
     )
     parser.add_argument("--title", type=str, default=None, help="Figure title.")
     parser.add_argument(
@@ -140,20 +131,18 @@ def main(argv: Optional[list[str]] = None) -> None:
         print(f"ERROR: File does not exist: {args.path}", file=sys.stderr)
         sys.exit(1)
 
+    if not is_supported_image_ext(args.path):
+        print(
+            "ERROR: Unsupported image format. Supported: .png, .jpg, .jpeg, .bmp, .tif, .tiff",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     try:
-        arr = load_tensor_like(args.path, key=args.key)
-        logger.info("Loaded tensor %s with shape %s", args.path, getattr(arr, "shape", None))
+        arr = load_pil_image(args.path)
+        logger.info("Loaded image %s with shape %s", args.path, getattr(arr, "shape", None))
 
-        # Check dimensionality
-        if not isinstance(arr, np.ndarray):
-            raise ValueError("Loaded object is not a NumPy array")
-
-        if arr.ndim not in (2, 3):
-            raise ValueError(
-                f"Tensor cannot be interpreted as a 2D or 3D image (ndim={arr.ndim})."
-            )
-
-        # Prepare for display
+        # Prepare
         disp, is_rgb = prepare_for_display(
             arr,
             normalize=args.normalize,
@@ -170,6 +159,8 @@ def main(argv: Optional[list[str]] = None) -> None:
             if args.cmap == "none":
                 cmap = "gray"
         else:
+            # 3D: if user provided a specific cmap and last channel==1, we'll respect in renderer,
+            # otherwise RGB will ignore colormap.
             if args.cmap != "none":
                 cmap = args.cmap
 
@@ -181,23 +172,13 @@ def main(argv: Optional[list[str]] = None) -> None:
             save=args.save,
             no_show=args.no_show,
         )
-
     except KeyboardInterrupt:
         print("Interrupted.", file=sys.stderr)
         sys.exit(130)
     except SystemExit:
         raise
-    except FileNotFoundError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        sys.exit(1)
-    except ImportError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        sys.exit(1)
-    except ValueError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        sys.exit(1)
     except Exception as e:
-        print(f"ERROR: Unexpected failure: {e}", file=sys.stderr)
+        print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 
 

@@ -209,9 +209,14 @@ Each module has comprehensive documentation:
 
 ## 🛠️ Utilities
 
-### Visualize .npy files
+### Visualize images and tensors
 ```bash
-python utils/visualizador.py path/to/file.npy
+# Image files
+python -m utils.visualize_image data/jssp/datasets/jssp_cnn_data_images/images/GEN_4x4_1_image.npy --title "Sample" --save out.png --no-show
+
+# Tensor files (.npy, .npz, .pt, .pth, .pkl)
+python -m utils.visualize_tensor path/to/array.npy --normalize
+python -m utils.visualize_tensor path/to/model.pt --key features --normalize --no-show
 ```
 
 ### Analyze datasets

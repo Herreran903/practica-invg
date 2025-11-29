@@ -1,62 +1,78 @@
+"""
+Deprecated wrapper for visualization.
+
+This script is deprecated. Please use the new standardized CLIs instead:
+
+- Images:  python -m utils.visualize_image <path_to_image>
+- Tensors: python -m utils.visualize_tensor <path_to_tensor>
+
+Behavior:
+- If the provided path looks like a standard image (.png, .jpg, .jpeg, .bmp, .tif, .tiff),
+  this wrapper forwards arguments to utils.visualize_image.
+- Otherwise, it forwards to utils.visualize_tensor.
+
+Exit codes:
+- Non-zero on error consistent with the underlying tool.
+"""
+
+from __future__ import annotations
+
+import logging
 import os
 import sys
 
-import matplotlib.pyplot as plt
-import numpy as np
-
-
-def visualizar_npy(ruta_archivo):
-    """Carga y visualiza un archivo .npy."""
-
-    if not os.path.exists(ruta_archivo):
-        print(f"❌ Error: Archivo no encontrado en la ruta: {ruta_archivo}")
-        sys.exit(1)
-
+try:
+    # Absolute imports require utils to be a package; ensured by utils/__init__.py
+    from utils.visualize_common import is_supported_image_ext
+    from utils.visualize_image import main as image_main
+    from utils.visualize_tensor import main as tensor_main
+except Exception:
+    # Fallback to relative imports if executed as part of the package
     try:
-        data = np.load(ruta_archivo)
-        print(
-            f"✅ Archivo cargado exitosamente. Forma de los datos (Shape): {data.shape}"
-        )
-
+        from .visualize_common import is_supported_image_ext  # type: ignore
+        from .visualize_image import main as image_main  # type: ignore
+        from .visualize_tensor import main as tensor_main  # type: ignore
     except Exception as e:
-        print(f"❌ Error al cargar el archivo .npy: {e}")
+        print(f"ERROR: Failed to import visualization modules: {e}", file=sys.stderr)
         sys.exit(1)
 
-    dim = data.ndim
 
-    plt.figure()
+def main(argv: list[str] | None = None) -> None:
+    if argv is None:
+        argv = sys.argv[1:]
 
-    if dim == 2:
-        plt.imshow(data, cmap="gray")
-        plt.title(f"Visualización 2D (Matriz {data.shape[0]}x{data.shape[1]})")
-        plt.colorbar(label="Valores Normalizados")
-        plt.xlabel("Eje X (Columna)")
-        plt.ylabel("Eje Y (Fila)")
+    # Print deprecation notice (stderr) but continue
+    print(
+        "DEPRECATION: utils/visualizador.py is deprecated.\n"
+        "Use one of the new CLIs instead:\n"
+        "  - Images:  python -m utils.visualize_image <path_to_image>\n"
+        "  - Tensors: python -m utils.visualize_tensor <path_to_tensor>\n",
+        file=sys.stderr,
+    )
 
-    elif dim == 1:
-        plt.plot(data)
-        plt.title(f"Visualización 1D (Vector de tamaño {data.shape[0]})")
-        plt.xlabel("Índice de Tiempo/Muestra")
-        plt.ylabel("Valor")
+    # Route based on the first positional argument if present
+    target = None
+    for a in argv:
+        # First non-option is assumed to be the path
+        if not a.startswith("-"):
+            target = a
+            break
 
-    elif dim == 3 and data.shape[-1] in [3, 4]:
-        plt.imshow(data)
-        plt.title(f"Visualización 3D (Imagen de color {data.shape})")
-
+    # Default routing: if extension is an image, go to image_main; else tensor_main
+    if target and is_supported_image_ext(target):
+        image_main(argv)
     else:
-        print(
-            f"⚠️ Aviso: No se puede visualizar automáticamente un array de {dim} dimensiones con esta forma."
-        )
-        print("Muestra la forma manualmente o ajusta el script.")
-        return
-
-    plt.show()
+        tensor_main(argv)
 
 
 if __name__ == "__main__":
-    archivo_a_visualizar = "ruta_a_tu_archivo.npy"
-
-    if len(sys.argv) > 1:
-        archivo_a_visualizar = sys.argv[1]
-
-    visualizar_npy(archivo_a_visualizar)
+    try:
+        main()
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        print("Interrupted.", file=sys.stderr)
+        sys.exit(130)
+    except Exception as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
