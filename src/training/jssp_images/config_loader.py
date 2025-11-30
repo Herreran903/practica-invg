@@ -97,28 +97,64 @@ def resolve_paths(config: Dict[str, Any], project_root: str = None) -> Dict[str,
     """
     Resolve relative paths in configuration to absolute paths.
 
+    This function is used by both JSSP and SAT training CLIs. Some configs (SAT)
+    do not define 'output.results_dir' because the CLI builds output dirs itself.
+    Be tolerant to missing keys and only resolve paths that exist.
+
     Args:
         config: Configuration dictionary
         project_root: Project root directory (defaults to current working directory)
 
     Returns:
-        Configuration with resolved absolute paths
+        Configuration with resolved absolute paths (for present keys)
     """
     if project_root is None:
         project_root = os.getcwd()
 
-    # Resolve CSV path
-    csv_path = config["data"]["csv_path"]
-    if not os.path.isabs(csv_path):
-        config["data"]["csv_path"] = os.path.normpath(
-            os.path.join(project_root, csv_path)
-        )
+    # Resolve CSV path if present
+    data_cfg = config.get("data", {})
+    csv_path = data_cfg.get("csv_path")
+    if isinstance(csv_path, str) and csv_path.strip():
+        if not os.path.isabs(csv_path):
+            config.setdefault("data", {})
+            config["data"]["csv_path"] = os.path.normpath(
+                os.path.join(project_root, csv_path)
+            )
 
-    # Resolve results directory
-    results_dir = config["output"]["results_dir"]
-    if not os.path.isabs(results_dir):
-        config["output"]["results_dir"] = os.path.normpath(
-            os.path.join(project_root, results_dir)
-        )
+    # Resolve results directory if present (JSSP images training)
+    out_cfg = config.get("output", {})
+    results_dir = out_cfg.get("results_dir")
+    if isinstance(results_dir, str) and results_dir.strip():
+        if not os.path.isabs(results_dir):
+            config.setdefault("output", {})
+            config["output"]["results_dir"] = os.path.normpath(
+                os.path.join(project_root, results_dir)
+            )
 
     return config
+
+def get_config_value(config: Dict[str, Any], *keys: str, default: Any = None) -> Any:
+    """
+    Safely retrieve a nested configuration value.
+
+    Traverses a nested configuration dictionary using the provided keys.
+    Returns 'default' if any key in the path is missing.
+
+    Args:
+        config: Configuration dictionary
+        *keys: Nested path of keys, e.g. ('training', 'epochs')
+        default: Value to return if path is missing
+
+    Returns:
+        The value at the nested path, or 'default' if not found.
+
+    Example:
+        >>> epochs = get_config_value(config, 'training', 'epochs', default=25)
+    """
+    current: Any = config
+    for key in keys:
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
+            return default
+    return current

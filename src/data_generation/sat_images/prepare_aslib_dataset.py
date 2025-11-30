@@ -7,7 +7,7 @@ processing algorithm_runs.arff files and generating ground truth CSVs.
 
 import csv
 import os
-from typing import Optional
+from typing import Optional, Dict
 
 from .aslib_parser import (
     build_pivot_runtime_table,
@@ -20,6 +20,7 @@ from .instance_resolver import (
     build_instance_path_map,
     load_instance_map_csv,
     resolve_raw_text_path,
+    resolve_path_with_prefix_map,
 )
 
 
@@ -30,6 +31,7 @@ def prepare_aslib_dataset(
     instance_map_csv: Optional[str] = None,
     timeout_s: Optional[float] = None,
     default_timeout_s: float = 5000.0,
+    prefix_map: Optional[Dict[str, str]] = None,
 ) -> str:
     """
     Generate a ground truth CSV from an ASlib scenario.
@@ -48,6 +50,11 @@ def prepare_aslib_dataset(
         instance_map_csv: CSV with instance_id,file_path columns (for ID mapping)
         timeout_s: Timeout to use; if None, tries description.txt, then default
         default_timeout_s: Default timeout if not found elsewhere
+        prefix_map: Optional mapping used to resolve instance IDs to paths,
+            mirroring the behavior of the image conversion step. If provided,
+            it is consulted as a fallback when direct filename/ID resolution
+            fails, ensuring Raw_Text_Path is fully populated before image
+            generation.
 
     Returns:
         Absolute path to generated CSV
@@ -98,11 +105,17 @@ def prepare_aslib_dataset(
     raw_paths = []
     for _, row in pivot_df.iterrows():
         instance_id = str(row["instance_id"])
+
+        # 1) Try explicit ID/filename mapping (uncompressed preferred)
         path = resolve_raw_text_path(instance_id, map_by_filename, map_by_id)
+
+        # 2) Fallback: use prefix-based resolution (same logic as image converter)
+        if (not path or not os.path.exists(str(path))) and prefix_map and instances_dir:
+            path = resolve_path_with_prefix_map(instances_dir, instance_id, prefix_map)
 
         # Validate path exists
         if path and os.path.exists(str(path)):
-            raw_paths.append(os.path.abspath(path))
+            raw_paths.append(os.path.abspath(str(path)))
         else:
             raw_paths.append("")
 
@@ -180,4 +193,5 @@ def prepare_aslib_dataset_with_config(
         instance_map_csv=instance_map_csv,
         timeout_s=timeout_s,
         default_timeout_s=config.default_timeout_s,
+        prefix_map=config.prefix_map,
     )

@@ -160,7 +160,7 @@ def main():
     df = normalize_image_paths(df, "Image_Npy_Path")
 
     print("Filtering valid images...")
-    df, missing_count = filter_valid_images(df)
+    df, missing_count, _total_rows = filter_valid_images(df)
 
     if missing_count > 0:
         print(f"⚠️  Removed {missing_count} rows with missing images")

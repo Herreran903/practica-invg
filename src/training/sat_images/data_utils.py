@@ -20,6 +20,7 @@ from ..jssp_images.data_utils import (
     filter_valid_images,
     make_dataset,
     normalize_image_paths,
+    multilabel_targets,
 )
 
 
@@ -315,6 +316,7 @@ __all__ = [
     "filter_valid_images",
     "make_dataset",
     "build_labels",
+    "multilabel_targets",
     # SAT-specific functions
     "get_status_column",
     "is_solver_ok",

@@ -69,9 +69,13 @@ def train_fold(
     batch_size = training_cfg.get("batch_size", 64)
     patience = training_cfg.get("early_stopping_patience", 6)
 
-    # Build labels
-    y_train = build_labels(train_df, solver_cols, task, use_score)
-    y_val = build_labels(val_df, solver_cols, task, use_score)
+    # Time limit is required by build_labels for multilabel/regression tasks.
+    # For consistency with run_kfold, fall back to 60s if not provided.
+    time_limit_s = data_cfg.get("time_limit_s", 60.0)
+
+    # Build labels (classification ignores time_limit_s internally)
+    y_train = build_labels(train_df, solver_cols, task, use_score, time_limit_s)
+    y_val = build_labels(val_df, solver_cols, task, use_score, time_limit_s)
 
     # Get image paths
     paths_train = train_df["Image_Npy_Path"].tolist()

@@ -211,6 +211,10 @@ Examples:
             os.makedirs(output_dir, exist_ok=True)
             csv_path = os.path.join(output_dir, config.ground_truth_csv_name)
 
+            # Prepare ground truth CSV and fully resolve Raw_Text_Path using the
+            # same prefix-mapping logic later used by the image converter. This
+            # mirrors the JSSP pipeline, so the resulting CSV already contains
+            # absolute paths to the raw .cnf/.xz/etc. files before image generation.
             csv_path = prepare_aslib_dataset(
                 scenario_dir=args.scenario_dir,
                 out_csv=csv_path,
@@ -218,6 +222,7 @@ Examples:
                 instance_map_csv=args.instance_map_csv,
                 timeout_s=args.timeout,
                 default_timeout_s=config.default_timeout_s,
+                prefix_map=config.prefix_map,
             )
 
             print()

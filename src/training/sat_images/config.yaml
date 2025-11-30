@@ -13,7 +13,7 @@ data:
   
   # Time limit for solver execution (seconds)
   # Used for resolved_rate and AST calculations
-  time_limit_s: 1800.0
+  time_limit_s: 1200.0
   
   # Column name for feature extraction time
   # If null, assumes 0 seconds
@@ -67,7 +67,12 @@ training:
 
 output:
   # Parent directory for training results
-  parent_dir: "training/sat/results"
+  # All SAT training runs will be stored under this root directory.
+  # Example layout:
+  #   results/sat/
+  #     sat_images_cnn_classification_YYYYMMDD_HHMMSS/
+  #     sat_images_cnn_multilabel_YYYYMMDD_HHMMSS/
+  parent_dir: "results/sat"
   
   # Run name prefix
   run_name: "sat_images_cnn"

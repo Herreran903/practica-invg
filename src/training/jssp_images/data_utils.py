@@ -182,12 +182,21 @@ def make_dataset(
     task: str,
     batch_size: int,
     shuffle: bool,
-    target_h: int,
-    target_w: int,
+    target_h: int | None = None,
+    target_w: int | None = None,
     seed: int = 42,
+    config: dict | None = None,
 ) -> tf.data.Dataset:
     """
     Create a tf.data.Dataset for training/validation.
+
+    This function is used by both JSSP and SAT image training pipelines.
+    To keep backward compatibility:
+
+    - If ``target_h``/``target_w`` are provided, they take precedence.
+    - Otherwise, if ``config`` is provided, values are read from
+      ``config["data"]["image"]["target_height"/"target_width"]``.
+    - As a last resort, defaults of 128×128 are used.
 
     Args:
         paths: List of paths to .npy image files
@@ -195,13 +204,25 @@ def make_dataset(
         task: One of 'classification', 'multilabel', or 'regression'
         batch_size: Batch size
         shuffle: Whether to shuffle the dataset
-        target_h: Target image height
-        target_w: Target image width
+        target_h: Target image height (optional; may be derived from config)
+        target_w: Target image width (optional; may be derived from config)
         seed: Random seed for shuffling
+        config: Optional configuration dict (from training YAML)
 
     Returns:
         TensorFlow dataset ready for training
     """
+    # Derive target height/width if not explicitly provided
+    if target_h is None or target_w is None:
+        if config is not None:
+            data_cfg = config.get("data", {})
+            image_cfg = data_cfg.get("image", {})
+            target_h = image_cfg.get("target_height", 128)
+            target_w = image_cfg.get("target_width", 128)
+        else:
+            target_h = target_h or 128
+            target_w = target_w or 128
+
     x = tf.constant(paths)
     y = tf.constant(labels)
 

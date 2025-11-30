@@ -21,13 +21,13 @@ Tensors are padded to fixed size `(10, 10, 2)` for consistent CNN input.
 ```bash
 # Classification
 python -m src.training.jssp_tensors.cli \
-  --csv data/jssp/datasets/jsp_cnn_data_gen_2/ground_truth.csv \
+  --csv data/jssp/datasets/jssp_cnn_data_tensors/ground_truth_jsp_generated_dataset.csv \
   --task classification \
   --epochs 30
 
 # Regression
 python -m src.training.jssp_tensors.cli \
-  --csv data/jssp/datasets/jsp_cnn_data_gen_2/ground_truth.csv \
+  --csv data/jssp/datasets/jssp_cnn_data_tensors/ground_truth_jsp_generated_dataset.csv \
   --task regression \
   --folds 5
 ```

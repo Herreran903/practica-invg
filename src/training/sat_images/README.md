@@ -14,25 +14,26 @@ This module extends jssp_images with SAT-specific features:
 ## Quick Start
 
 ```bash
-# Basic classification
+# Basic classification over ALL solvers present in the CSV (no --solvers filter)
 python -m src.training.sat_images.cli \
-  --csv data/sat/datasets/sat_cnn_data_gen_all/ground_truth.csv \
+  --csv data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv \
   --task classification \
   --epochs 30
 
-# 5x5 cross-validation
+# 5x5 cross-validation (all solvers from CSV)
 python -m src.training.sat_images.cli \
-  --csv data/sat/datasets/sat_cnn_data_gen_all/ground_truth.csv \
+  --csv data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv \
   --task classification \
   --folds 5 \
   --repeats 5 \
-  --time_limit 1800
+  --time_limit 1200
 
-# Filter specific solvers
+# Filter specific solvers (names MUST match the 'algorithm' values in algorithm_runs.arff)
+# Example for the SAT12-INDU scenario: ebglucose, glucose2, lingeling, clasp1, clasp2, ...
 python -m src.training.sat_images.cli \
-  --csv data/sat/datasets/sat_cnn_data_gen_all/ground_truth.csv \
+  --csv data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv \
   --task multilabel \
-  --solvers clasp,glucose,lingeling
+  --solvers ebglucose,glucose2,lingeling,clasp1,clasp2
 ```
 
 ## Configuration
@@ -128,7 +129,7 @@ training/sat/results/sat_images_cnn_classification_20241124_151730/
 
 ```bash
 python -m src.training.sat_images.cli \
-  --csv data/sat/datasets/sat_cnn_data_gen_all/ground_truth.csv \
+  --csv data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv \
   --task classification \
   --folds 5 \
   --repeats 5 \
@@ -147,3 +148,43 @@ This runs 25 folds total (5 folds × 5 repetitions) with different random seeds.
 ## License
 
 Part of the SAT solver selection project.
+## Multilabel Training Examples
+
+The following commands illustrate how to run the SAT images training CLI in **multilabel** mode.  
+All examples use the same CLI entry point [`sat_images.cli`](src/training/sat_images/cli.py:125) and the default config [`config.yaml`](src/training/sat_images/config.yaml:1).
+
+```bash
+# Basic multilabel training over ALL solvers present in the CSV
+python -m src.training.sat_images.cli \
+  --csv data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv \
+  --task multilabel \
+  --epochs 30 \
+  --time_limit 1800
+```
+
+```bash
+# 5x5 cross-validation in multilabel mode (all solvers from CSV)
+python -m src.training.sat_images.cli \
+  --csv data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv \
+  --task multilabel \
+  --folds 5 \
+  --repeats 5 \
+  --time_limit 1800
+```
+
+```bash
+# Multilabel training with an explicit subset of solvers
+# IMPORTANT: Solver names MUST match the 'algorithm' values in algorithm_runs.arff
+# Example (consistent with SAT12-INDU algorithms):
+#   ebglucose, ebminisat, glucose2, glueminisat, lingeling, lrglshr,
+#   minisatpsm, mphaseSAT64, precosat, qutersat, rcl, restartsat,
+#   cryptominisat2011, spear-sw, spear-hw, eagleup, sparrow, marchrw,
+#   mphaseSATm, satime11, tnm, mxc09, gnoveltyp2, sattime, sattimep,
+#   clasp2, clasp1, picosat, mphaseSAT, sapperlot, sol
+
+python -m src.training.sat_images.cli \
+  --csv data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv \
+  --task multilabel \
+  --time_limit 1800 \
+  --solvers ebglucose,glucose2,lingeling,clasp1,clasp2
+```

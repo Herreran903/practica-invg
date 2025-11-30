@@ -43,20 +43,20 @@ src/training/jssp_images/
 ```bash
 # Classification task
 python -m src.training.jssp_images.cli \
-  --csv data/jssp/datasets/jsp_cnn_data_gen/ground_truth.csv \
+  --csv data/jssp/datasets/jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv \
   --task classification \
   --epochs 30 \
   --folds 5
 
 # Multilabel task
 python -m src.training.jssp_images.cli \
-  --csv data/jssp/datasets/jsp_cnn_data_gen/ground_truth.csv \
+  --csv data/jssp/datasets/jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv \
   --task multilabel \
   --epochs 25
 
 # Regression task
 python -m src.training.jssp_images.cli \
-  --csv data/jssp/datasets/jsp_cnn_data_gen/ground_truth.csv \
+  --csv data/jssp/datasets/jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv \
   --task regression \
   --use_score
 ```
@@ -66,7 +66,7 @@ python -m src.training.jssp_images.cli \
 ```bash
 python -m src.training.jssp_images.cli \
   --config src/training/jssp_images/config.yaml \
-  --csv data/jssp/datasets/jsp_cnn_data_gen/ground_truth.csv \
+  --csv data/jssp/datasets/jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv \
   --task classification \
   --epochs 50 \
   --batch_size 32 \
@@ -208,7 +208,7 @@ import pandas as pd
 config = load_config("src/training/jssp_images/config.yaml")
 
 # Load data
-df = pd.read_csv("data/jssp/datasets/jsp_cnn_data_gen/ground_truth.csv")
+df = pd.read_csv("data/jssp/datasets/jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv")
 
 # Detect solver columns
 solver_cols = detect_solver_cols(df)
