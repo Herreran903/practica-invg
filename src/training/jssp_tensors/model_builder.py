@@ -14,7 +14,7 @@ import tensorflow as tf
 def build_cnn(
     input_shape: Tuple[int, int, int],
     output_dim: int,
-    task: Literal["classification", "multilabel", "regression"],
+    task: Literal["classification", "multilabel"],
     conv_filters: list[int] = [32, 64, 128],
     conv_kernel_size: int = 3,
     pool_size: int = 2,
@@ -24,29 +24,29 @@ def build_cnn(
 ) -> tf.keras.Model:
     """
     Build and compile CNN for JSSP tensor inputs.
-
+ 
     Architecture optimized for 10x10x2 inputs:
     - Multiple Conv2D + MaxPooling2D blocks
     - Flatten
     - Dense layer with dropout
     - Task-specific output layer
-
+ 
     Args:
         input_shape: Shape of input tensors (max_jobs, max_machines, n_channels).
         output_dim: Number of output units.
-        task: Task type.
+        task: Task type ('classification' or 'multilabel').
         conv_filters: List of filter counts for Conv2D layers.
         conv_kernel_size: Kernel size for convolutions.
         pool_size: Pool size for MaxPooling2D.
         dropout_dense: Dropout rate after dense layer.
         dense_units: Number of units in dense layer.
         learning_rate: Learning rate for Adam.
-
+ 
     Returns:
         Compiled Keras model.
     """
-    if task not in ["classification", "multilabel", "regression"]:
-        raise ValueError(f"Invalid task '{task}'")
+    if task not in ["classification", "multilabel"]:
+        raise ValueError(f"Invalid task '{task}' for jssp_tensors (only classification/multilabel supported)")
 
     inputs = tf.keras.Input(shape=input_shape, name="tensor_input")
     x = inputs
@@ -80,12 +80,6 @@ def build_cnn(
         )(x)
         loss = "binary_crossentropy"
         metrics = [tf.keras.metrics.AUC(curve="PR", name="auc_pr")]
-    else:  # regression
-        outputs = tf.keras.layers.Dense(
-            output_dim, activation="linear", name="output_linear"
-        )(x)
-        loss = "mae"
-        metrics = ["mae"]
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs, name=f"cnn_tensor_{task}")
     model.compile(
@@ -100,7 +94,7 @@ def build_cnn(
 def build_model_from_config(
     config: dict,
     output_dim: int,
-    task: Literal["classification", "multilabel", "regression"],
+    task: Literal["classification", "multilabel"],
 ) -> tf.keras.Model:
     """
     Build CNN model using configuration dictionary.

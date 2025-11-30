@@ -30,42 +30,60 @@ def load_tensor_npy(
 ) -> np.ndarray:
     """
     Load a JSSP tensor from .npy file and pad to fixed size.
-
-    Expected input: (JOBS, MACHINES, 2) where:
-    - Channel 0: Machine ID
-    - Channel 1: Processing duration
-
+ 
+    Supported input shapes:
+    - 2D: (JOBS, MACHINES)            → interpreted as a single channel (duration)
+    - 3D: (JOBS, MACHINES, C_in)      → first min(C_in, n_channels) channels copied
+ 
+    Output shape is always (max_jobs, max_machines, n_channels).
+ 
     Args:
         path: Path to .npy file (as bytes from tf.numpy_function).
         max_jobs: Maximum number of jobs (for padding).
         max_machines: Maximum number of machines (for padding).
-        n_channels: Number of channels (should be 2).
-
+        n_channels: Number of channels (>=1).
+ 
     Returns:
-        Padded tensor of shape (max_jobs, max_machines, n_channels).
-
+        Padded tensor of shape (max_jobs, max_machines, n_channels) in float32.
+ 
     Raises:
         ValueError: If tensor shape is invalid or exceeds max dimensions.
     """
     arr = np.load(path.decode("utf-8")).astype(np.float32)
-
-    if arr.ndim != 3 or arr.shape[2] != n_channels:
-        raise ValueError(
-            f"Expected tensor (JOBS, MACHINES, {n_channels}), got {arr.shape}"
-        )
-
-    jobs, machines, _ = arr.shape
-    if jobs > max_jobs or machines > max_machines:
-        raise ValueError(
-            f"Tensor {arr.shape} exceeds limits "
-            f"max_jobs={max_jobs}, max_machines={max_machines}"
-        )
-
-    # Pad to fixed size
-    out = np.zeros((max_jobs, max_machines, n_channels), dtype=np.float32)
-    out[:jobs, :machines, :] = arr
-
-    return out
+ 
+    # Case 1: 2D matrix (num_jobs x num_machines), as produced by tensor_converter.py
+    if arr.ndim == 2:
+        jobs, machines = arr.shape
+        if jobs > max_jobs or machines > max_machines:
+            raise ValueError(
+                f"Tensor {arr.shape} exceeds limits "
+                f"max_jobs={max_jobs}, max_machines={max_machines}"
+            )
+ 
+        out = np.zeros((max_jobs, max_machines, n_channels), dtype=np.float32)
+        # Put durations in the first channel; additional channels remain zero.
+        out[:jobs, :machines, 0] = arr
+        return out
+ 
+    # Case 2: 3D tensor (num_jobs x num_machines x C_in)
+    if arr.ndim == 3:
+        jobs, machines, c_in = arr.shape
+        if jobs > max_jobs or machines > max_machines:
+            raise ValueError(
+                f"Tensor {arr.shape} exceeds limits "
+                f"max_jobs={max_jobs}, max_machines={max_machines}"
+            )
+ 
+        out = np.zeros((max_jobs, max_machines, n_channels), dtype=np.float32)
+        # Copy as many channels as possible
+        c_copy = min(c_in, n_channels)
+        out[:jobs, :machines, :c_copy] = arr[..., :c_copy]
+        return out
+ 
+    # Any other rank is unsupported
+    raise ValueError(
+        f"Expected tensor with 2 or 3 dims (JOBS, MACHINES[, CHANNELS]), got {arr.shape}"
+    )
 
 
 def make_dataset(
@@ -134,19 +152,22 @@ def build_labels(
     time_limit: float,
 ) -> np.ndarray:
     """
-    Build labels for training based on task type.
-
-    Reuses logic from jssp_images with time_limit parameter.
-
+    Build labels for training based on task type (classification or multilabel).
+ 
+    Reuses logic from jssp_images with time_limit parameter for multilabel.
+ 
     Args:
         df: DataFrame with solver performance data.
         solver_cols: Dictionary with 'runtime' and 'score' column lists.
-        task: Task type.
+        task: Task type ('classification' or 'multilabel').
         use_score: Whether to use score columns.
-        time_limit: Time limit for multilabel and regression tasks.
-
+        time_limit: Time limit for multilabel task.
+ 
     Returns:
         Labels array with appropriate shape for the task.
+ 
+    Raises:
+        ValueError: If task is not supported.
     """
     if task == "classification":
         y = []
@@ -160,7 +181,7 @@ def build_labels(
             idx = int(np.nanargmin(vals))
             y.append(idx)
         y = np.array(y, dtype=np.int32)
-
+ 
     elif task == "multilabel":
         rt_cols = solver_cols["runtime"]
         y = np.stack(
@@ -170,12 +191,10 @@ def build_labels(
             ],
             axis=0,
         )
-
-    else:  # regression
-        rt_cols = solver_cols["runtime"]
-        y = df[rt_cols].astype(float).values
-        y[~np.isfinite(y)] = time_limit * 10.0
-
+ 
+    else:
+        raise ValueError(f"Unsupported task for jssp_tensors build_labels: {task}")
+ 
     return y
 
 

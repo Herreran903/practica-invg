@@ -215,7 +215,11 @@ def convert_dataset_to_tensors(
 
     # Update CSV with tensor paths
     print("\n[3/3] Updating CSV with tensor paths...")
+    # Keep original tensor column for backward compatibility
     df[output_col] = tensor_paths
+    # Also expose paths under 'Image_Npy_Path' so training pipelines
+    # (which expect this column name for images/tensors) can reuse the CSV
+    df["Image_Npy_Path"] = tensor_paths
     df.to_csv(csv_path, index=False)
 
     successful = sum(1 for p in tensor_paths if p is not None)

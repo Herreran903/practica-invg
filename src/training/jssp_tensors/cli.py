@@ -38,7 +38,7 @@ def parse_arguments() -> argparse.Namespace:
         epilog="""
 Examples:
   python -m src.training.jssp_tensors.cli --csv data.csv --task classification
-  python -m src.training.jssp_tensors.cli --csv data.csv --task regression --epochs 30
+  python -m src.training.jssp_tensors.cli --csv data.csv --task multilabel --epochs 30
         """,
     )
 
@@ -52,8 +52,8 @@ Examples:
         "--task",
         type=str,
         required=True,
-        choices=["classification", "multilabel", "regression"],
-        help="Task type",
+        choices=["classification", "multilabel"],
+        help="Task type (classification or multilabel)",
     )
     parser.add_argument(
         "--config",

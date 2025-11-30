@@ -83,10 +83,3 @@ tasks:
     loss: "binary_crossentropy"
     metrics: ["auc_pr"]
     threshold: 0.5  # Binary threshold for predictions
-    
-  regression:
-    description: "Predict runtime for each solver"
-    output_activation: "linear"
-    loss: "mae"
-    metrics: ["mae"]
-    nan_penalty_multiplier: 10.0  # Multiply time_limit by this for NaN runtimes
