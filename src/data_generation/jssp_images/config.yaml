@@ -58,9 +58,9 @@ generated:
   # Generation cases: (num_jobs, num_machines, num_instances)
   generation_cases:
     - [4, 4, 5]
-    # - [6, 6, 5]
-    # - [8, 8, 5]
-    # - [10, 10, 5]
+    - [6, 6, 5]
+    - [8, 8, 5]
+    - [10, 10, 5]
   
   # Instance generation parameters
   instance_generation:

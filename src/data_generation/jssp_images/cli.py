@@ -136,11 +136,16 @@ Examples:
 
         # Convert to images
         print("=" * 75)
-        print("STEP 2: Converting instances to grayscale images")
+        print("STEP 2: Converting instances to grayscale images (Text-to-Image: model.mzn + .dzn)")
         print("=" * 75)
         print()
-
-        convert_dataset_to_images(csv_path, target_size=image_size)
+ 
+        # Text-to-Image conversion uses the CP model (.mzn) together with each .dzn file
+        convert_dataset_to_images(
+            csv_path=csv_path,
+            cp_model_path=config.cp_model_path,
+            target_size=image_size,
+        )
 
         # Success summary
         print()

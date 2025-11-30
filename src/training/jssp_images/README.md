@@ -43,14 +43,14 @@ src/training/jssp_images/
 ```bash
 # Classification task
 python -m src.training.jssp_images.cli \
-  --csv data/jssp/datasets/jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv \
+  --csv data/jssp/datasets/jssp_cnn_data_images/ground_truth_jsp_generated_dataset.csv \
   --task classification \
   --epochs 30 \
   --folds 5
 
 # Multilabel task
 python -m src.training.jssp_images.cli \
-  --csv data/jssp/datasets/jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv \
+  --csv data/jssp/datasets/jssp_cnn_data_images/ground_truth_jsp_generated_dataset.csv \
   --task multilabel \
   --epochs 25
 
