@@ -211,7 +211,9 @@ def compute_bss_baseline(
     bss_col = cols[bss_idx]
 
     if task == "classification":
-        y_val_true = build_labels(val_df, solver_cols, task, use_score)
+        # build_labels requires a time_limit argument but ignores it internally
+        # for classification. We pass the configured time_limit for consistency.
+        y_val_true = build_labels(val_df, solver_cols, task, use_score, time_limit)
         y_bss = np.full_like(y_val_true, bss_idx)
         baseline_metric = accuracy_score(y_val_true, y_bss)
         metric_name = "accuracy"
@@ -285,7 +287,10 @@ def run_kfold(
 
     # Setup K-Fold splitter
     if task == "classification":
-        labels = build_labels(df, solver_cols, task, use_score)
+        # For build_labels, a time_limit is required by signature, but it is
+        # ignored internally for classification. We pass the configured limit
+        # for consistency with multilabel/regression.
+        labels = build_labels(df, solver_cols, task, use_score, time_limit)
         binc = np.bincount(labels)
         min_class = binc.min()
 
@@ -352,7 +357,10 @@ def run_kfold(
             fold_idx=i,
         )
 
-        # Evaluate fold (compute metrics and generate visualizations)
+        # Evaluate fold (compute metrics and generate visualizations).
+        # For JSSP (images/tensors), we also pass validation data and runtime
+        # column names so that evaluation can compute resolved_rate, similar
+        # to the SAT pipeline.
         eval_metrics = evaluate_fold(
             y_true=y_true,
             y_pred=y_pred,
@@ -360,6 +368,9 @@ def run_kfold(
             solver_names=solver_names,
             fold_dir=fold_dir,
             fold_idx=i,
+            val_df=val_df,
+            solver_runtime_cols=cols_for_names,
+            config=config,
         )
 
         # Combine metrics

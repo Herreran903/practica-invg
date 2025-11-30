@@ -88,7 +88,8 @@ training:
 # ============================================================================
 output:
   # Parent directory for all training reports
-  results_dir: "training/jssp/results"
+  # (relative to project root; e.g. results/jssp/images/...)
+  parent_dir: "results/jssp/images"
   
   # Whether to append task name to output directory
   append_task_to_dirname: false

@@ -92,8 +92,8 @@ Examples:
         "--task",
         type=str,
         required=True,
-        choices=["classification", "multilabel", "regression"],
-        help="Task type: classification (best solver), multilabel (viable solvers), or regression (predict runtimes)",
+        choices=["classification", "multilabel"],
+        help="Task type: classification (best solver) or multilabel (viable solvers)",
     )
 
     # Optional arguments

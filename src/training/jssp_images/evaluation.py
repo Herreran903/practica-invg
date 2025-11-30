@@ -199,13 +199,23 @@ def evaluate_fold(
     solver_names: List[str],
     fold_dir: str,
     fold_idx: int,
+    val_df: pd.DataFrame | None = None,
+    solver_runtime_cols: List[str] | None = None,
+    config: dict | None = None,
 ) -> Dict[str, float]:
     """
     Evaluate a fold based on task type and generate visualizations.
-
+ 
     This is the main entry point for fold evaluation. It dispatches to
     task-specific evaluation functions and triggers visualization generation.
-
+ 
+    For JSSP (images/tensors), this function also optionally computes a
+    "resolved_rate" metric for classification and multilabel tasks when
+    validation data and runtime columns are provided:
+ 
+        resolved_rate = fraction of validation instances where at least one
+        predicted solver finishes within the configured time limit.
+ 
     Args:
         y_true: True labels/values.
         y_pred: Predicted labels/values.
@@ -213,10 +223,14 @@ def evaluate_fold(
         solver_names: List of solver names.
         fold_dir: Output directory for this fold.
         fold_idx: Fold index.
-
+        val_df: Optional validation DataFrame (required for resolved_rate).
+        solver_runtime_cols: Optional list of runtime column names aligned
+            with solver_names / prediction indices.
+        config: Optional configuration dict, used to read time_limit_s.
+ 
     Returns:
-        Dictionary with task-specific metrics.
-
+        Dictionary with task-specific metrics (plus resolved_rate when available).
+ 
     Design Decision:
         Separates metric computation from visualization to maintain modularity.
         Visualization is triggered here but implemented in visualization.py.
@@ -228,30 +242,101 @@ def evaluate_fold(
         plot_pr_curves_multilabel,
         plot_regression_scatter,
     )
-
+ 
+    # Helper: compute time limit from config (fallback 60s)
+    def _get_time_limit_s() -> float:
+        if config is None:
+            return 60.0
+        data_cfg = config.get("data", {})
+        # SAT config uses data.time_limit_s; JSSP images uses same key
+        return float(data_cfg.get("time_limit_s", 60.0))
+ 
     # Compute metrics based on task
     if task == "classification":
         metrics = evaluate_classification(
             y_true, y_pred, solver_names, fold_dir, fold_idx
         )
-
+ 
+        # Optional resolved_rate for JSSP: predicted solver runtime < time_limit_s
+        if (
+            val_df is not None
+            and solver_runtime_cols is not None
+            and len(val_df) == len(y_pred)
+        ):
+            time_limit = _get_time_limit_s()
+            n = len(val_df)
+            resolved = 0
+ 
+            for i, cls_idx in enumerate(y_pred):
+                idx = int(cls_idx)
+                if idx < 0 or idx >= len(solver_runtime_cols):
+                    continue
+                runtime_col = solver_runtime_cols[idx]
+                try:
+                    rt = float(val_df.iloc[i][runtime_col])
+                except Exception:
+                    continue
+ 
+                if np.isfinite(rt) and rt < time_limit:
+                    resolved += 1
+ 
+            metrics["resolved_rate"] = float(resolved / n) if n > 0 else 0.0
+ 
         # Generate visualizations
         plot_confusion_matrix(y_true, y_pred, solver_names, fold_dir, fold_idx)
         plot_class_bars(y_true, y_pred, solver_names, fold_dir, fold_idx)
-
+ 
     elif task == "multilabel":
         metrics = evaluate_multilabel(y_true, y_pred, solver_names, fold_dir, fold_idx)
-
+ 
+        # Optional resolved_rate for JSSP multilabel:
+        # instance is "resolved" if any predicted-1 solver has runtime < time_limit_s
+        if (
+            val_df is not None
+            and solver_runtime_cols is not None
+            and len(val_df) == y_pred.shape[0]
+        ):
+            time_limit = _get_time_limit_s()
+            n = len(val_df)
+            resolved = 0
+ 
+            for i in range(n):
+                row_pred = y_pred[i]
+                # Treat >0.5 as active solver (works with {0,1} or probabilities)
+                active_idxs = np.where(row_pred > 0.5)[0]
+                if active_idxs.size == 0:
+                    continue
+ 
+                row = val_df.iloc[i]
+                instance_resolved = False
+                for idx in active_idxs:
+                    if idx < 0 or idx >= len(solver_runtime_cols):
+                        continue
+                    runtime_col = solver_runtime_cols[int(idx)]
+                    try:
+                        rt = float(row[runtime_col])
+                    except Exception:
+                        continue
+ 
+                    if np.isfinite(rt) and rt < time_limit:
+                        instance_resolved = True
+                        break
+ 
+                if instance_resolved:
+                    resolved += 1
+ 
+            metrics["resolved_rate"] = float(resolved / n) if n > 0 else 0.0
+ 
         # Generate visualizations
         plot_pr_curves_multilabel(y_true, solver_names, fold_dir, fold_idx)
         plot_f1_bars_multilabel(y_true, y_pred, solver_names, fold_dir, fold_idx)
-
+ 
     else:  # regression
         metrics = evaluate_regression(y_true, y_pred, solver_names, fold_dir, fold_idx)
-
+ 
         # Generate visualizations
         plot_regression_scatter(y_true, y_pred, solver_names, fold_dir, fold_idx)
-
+ 
     return metrics
 
 

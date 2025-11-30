@@ -56,8 +56,9 @@ training:
   seed: 42
 
 output:
-  # Parent directory for training results
-  parent_dir: "training/jssp/results"
+  # Parent directory for training results (relative to project root)
+  # e.g. results/jssp/tensors/jssp_tensors_cnn_classification_...
+  parent_dir: "results/jssp/tensors"
   
   # Run name prefix
   run_name: "jssp_tensors_cnn"
