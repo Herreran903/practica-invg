@@ -4,10 +4,11 @@ This module provides a complete pipeline for training CNN models to select the b
 
 ## Overview
 
-The module supports three training tasks:
+The module supports two main training tasks via the CLI:
 - **Classification**: Select the single best solver for each instance
 - **Multilabel**: Identify all viable solvers (runtime < time limit)
-- **Regression**: Predict runtime for each solver
+
+Internally, it also includes utilities for **regression** (predicting runtime for each solver) that can be used via the Python API, but regression is not exposed as a CLI task.
 
 ## Module Structure
 
@@ -54,11 +55,6 @@ python -m src.training.jssp_images.cli \
   --task multilabel \
   --epochs 25
 
-# Regression task
-python -m src.training.jssp_images.cli \
-  --csv data/jssp/datasets/jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv \
-  --task regression \
-  --use_score
 ```
 
 ### With Custom Configuration
@@ -117,7 +113,7 @@ training:
 ### Output Configuration
 ```yaml
 output:
-  parent_dir: "training/jssp/results"
+  parent_dir: "results/jssp/images"
   run_name: "jssp_images_cnn"
   append_task_to_dirname: true
   timestamp_format: "%Y%m%d_%H%M%S"
@@ -127,7 +123,7 @@ output:
 
 ### Required Arguments
 - `--csv`: Path to CSV file with `Image_Npy_Path` and solver performance columns
-- `--task`: Task type (`classification`, `multilabel`, or `regression`)
+- `--task`: Task type (`classification` or `multilabel`). Regression is supported via the Python API but is not exposed through the CLI.
 
 ### Optional Arguments
 - `--config`: Path to configuration YAML (default: `src/training/jssp_images/config.yaml`)
@@ -159,7 +155,7 @@ inst_002,data/images/inst_002.npy,45.1,32.7,28.9
 Results are saved in timestamped directories:
 
 ```
-training/jssp/results/jssp_images_cnn_classification_20241124_151730/
+results/jssp/images/jssp_images_cnn_classification_20241124_151730/
 ├── config.yaml                  # Configuration used
 ├── run_info.json               # Run metadata
 ├── metrics_per_fold.csv        # Detailed per-fold metrics
@@ -208,7 +204,7 @@ import pandas as pd
 config = load_config("src/training/jssp_images/config.yaml")
 
 # Load data
-df = pd.read_csv("data/jssp/datasets/jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv")
+df = pd.read_csv("data/jssp/datasets/jssp_cnn_data_images/ground_truth_jsp_generated_dataset.csv")
 
 # Detect solver columns
 solver_cols = detect_solver_cols(df)
@@ -286,7 +282,7 @@ Reduce `batch_size` in config or via CLI argument.
 
 ## Related Modules
 
-- **jssp_tensors**: Training on 3D tensor representations (10x10x2)
+- **jssp_tensors**: Training on padded 3D tensor representations (max_jobs × max_machines × n_channels)
 - **sat_images**: Training on SAT problem images
 - **data_generation/jssp_images**: Generate training data from JSSP instances
 

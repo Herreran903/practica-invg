@@ -53,7 +53,7 @@ Directory containing raw SAT instance files:
 ## Output Structure
 
 ```
-data/sat/datasets/sat_cnn_data_gen/
+data/sat/datasets/sat_cnn_data_images/
 ├── ground_truth_aslib.csv          # Ground truth with solver metrics
 └── images/
     └── *__<hash>.npy               # Grayscale images (128×128, float32)
@@ -88,7 +88,7 @@ All parameters are centralized in [`config.yaml`](config.yaml). Key sections:
 ```yaml
 output:
   base_dir: "data/sat/datasets"
-  default_output_dir: "sat_cnn_data_gen"
+  default_output_dir: "sat_cnn_data_images"
 ```
 
 ### Image Parameters
@@ -140,7 +140,7 @@ python -m src.data_generation.sat_images.cli \
 ```bash
 python -m src.data_generation.sat_images.cli \
   --skip-aslib \
-  --csv data/sat/datasets/sat_cnn_data_gen/ground_truth_aslib.csv \
+  --csv data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv \
   --instances-dir data/sat/instances/sc2012-application
 ```
 
@@ -236,8 +236,8 @@ After decompression, the CLI will show diagnostics and should report few or zero
    ```
 
 4. **Check outputs**:
-   - CSV: `data/sat/datasets/sat_cnn_data_gen/ground_truth_aslib.csv`
-   - Images: `data/sat/datasets/sat_cnn_data_gen/images/*.npy`
+   - CSV: `data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv`
+   - Images: `data/sat/datasets/sat_cnn_data_images/images/*.npy`
 
 5. **Use in training**:
    ```python
@@ -245,7 +245,7 @@ After decompression, the CLI will show diagnostics and should report few or zero
    import pandas as pd
    
    # Load dataset
-   df = pd.read_csv('data/sat/datasets/sat_cnn_data_gen/ground_truth_aslib.csv')
+   df = pd.read_csv('data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv')
    
    # Load an image
    image = np.load(df.iloc[0]['Image_Npy_Path'])
@@ -283,7 +283,7 @@ config = load_config("src/data_generation/sat_images/config.yaml")
 # Process ASlib scenario
 csv_path = prepare_aslib_dataset(
     scenario_dir="data/sat/aslib/sc2012-application",
-    out_csv="data/sat/datasets/sat_cnn_data_gen/ground_truth_aslib.csv",
+    out_csv="data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv",
     instances_dir="data/sat/instances/sc2012-application",
     timeout_s=5000.0
 )

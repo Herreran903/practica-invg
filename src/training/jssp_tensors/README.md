@@ -4,33 +4,43 @@ Train CNN models on 3D tensor representations of Job Shop Scheduling Problem (JS
 
 ## Overview
 
-This module works with tensors of shape `(JOBS, MACHINES, 2)` where:
-- **Channel 0**: Machine ID
-- **Channel 1**: Processing duration
+This module works with JSSP tensors derived from `.dzn` instances:
 
-Tensors are padded to fixed size `(10, 10, 2)` for consistent CNN input.
+- Data generation (`src/data_generation/jssp_tensors/`) saves **2D matrices** of
+  shape `(JOBS, MACHINES)` containing **processing times**.
+- The training pipeline loads these matrices and pads them into **3D tensors**
+  of shape `(max_jobs, max_machines, n_channels)` where:
+  - **Channel 0**: Processing duration (from the 2D matrix)
+  - **Additional channels**: Currently unused / zero-padded (reserved for future features)
+
+By default, tensors are padded to `(10, 10, 2)` for consistent CNN input, as
+configured in [`config.yaml`](config.yaml:10).
 
 ## Key Differences from jssp_images
 
-- **Input**: 3D tensors (10x10x2) instead of 2D images (128x128x1)
-- **Architecture**: Adapted CNN with filters [32, 64, 128] for smaller spatial dimensions
-- **Data Loading**: Custom tensor loader with padding logic
+- **Input**: Padded 3D tensors `(max_jobs × max_machines × n_channels)` instead of fixed 2D images `(128×128×1)`
+- **Architecture**: CNN tuned for small spatial grids (default 10×10 with filters [32, 64, 128])
+- **Data Loading**: Custom tensor loader with padding logic from variable `(JOBS, MACHINES)` to fixed shape
 
 ## Quick Start
 
 ```bash
-# Classification
+# Classification task
 python -m src.training.jssp_tensors.cli \
   --csv data/jssp/datasets/jssp_cnn_data_tensors/ground_truth_jsp_generated_dataset.csv \
   --task classification \
   --epochs 30
 
-# Regression
+# Multilabel task
 python -m src.training.jssp_tensors.cli \
   --csv data/jssp/datasets/jssp_cnn_data_tensors/ground_truth_jsp_generated_dataset.csv \
-  --task regression \
-  --folds 5
+  --task multilabel \
+  --epochs 30
 ```
+
+The CLI supports **classification** and **multilabel** tasks. Regression-style
+experiments on tensors can be implemented via the Python API if needed, but are
+not exposed as a CLI task.
 
 ## Configuration
 
@@ -52,28 +62,36 @@ model:
 ## Input Data Format
 
 CSV must contain:
-- `Image_Npy_Path`: Path to `.npy` tensor files
+- `Image_Npy_Path`: Path to `.npy` tensor files (produced by `src/data_generation/jssp_tensors`)
 - `*_Runtime_s`: Runtime columns per solver
 - `*_Score_S_rel`: (Optional) Score columns
 
-Tensor files should contain arrays of shape `(J, M, 2)` where `J ≤ 10` and `M ≤ 10`.
+Tensor files should typically contain **2D arrays** of shape `(J, M)` (processing
+times), where `J ≤ max_jobs` and `M ≤ max_machines`. The training loader
+[`load_tensor_npy`](src/training/jssp_tensors/data_utils.py:28) accepts:
+
+- 2D: `(J, M)` → interpreted as a single duration channel, placed in channel 0
+- 3D: `(J, M, C_in)` → first `min(C_in, n_channels)` channels copied
+
+In all cases, tensors are padded to `(max_jobs, max_machines, n_channels)` as
+configured in [`config.yaml`](src/training/jssp_tensors/config.yaml:10).
 
 ## Architecture
 
 ```
-Input: (10, 10, 2)
+Input: (max_jobs, max_machines, n_channels)  # default: (10, 10, 2)
 ├─ Conv2D(32) + MaxPool
 ├─ Conv2D(64) + MaxPool
 ├─ Conv2D(128) + MaxPool
 ├─ Flatten
 ├─ Dense(256) + Dropout(0.4)
-└─ Output (task-specific)
+└─ Output (task-specific: softmax for classification, sigmoid for multilabel)
 ```
 
 ## Output Structure
 
 ```
-training/jssp/results/jssp_tensors_cnn_classification_20241124_151730/
+results/jssp/tensors/jssp_tensors_cnn_classification_20241124_151730/
 ├── config.yaml
 ├── run_info.json
 ├── metrics_per_fold.csv
@@ -85,6 +103,10 @@ training/jssp/results/jssp_tensors_cnn_classification_20241124_151730/
     ├── fold1_y_pred.npy
     └── fold1_confusion.png
 ```
+
+The parent directory (`results/jssp/tensors`) and run naming follow
+[`config.yaml`](src/training/jssp_tensors/config.yaml:58) and the logic in
+[`prepare_output_directory()`](src/training/jssp_tensors/cli.py:76).
 
 ## Related Modules
 

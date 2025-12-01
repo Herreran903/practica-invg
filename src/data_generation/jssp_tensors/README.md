@@ -91,6 +91,7 @@ print(tensor.dtype)  # float32
 - `{SOLVER}_Runtime_s`: Runtime for each solver
 - `{SOLVER}_Score_S_rel`: Relative performance score for each solver
 - `Tensor_Npy_Path`: Path to the tensor .npy file
+- `Image_Npy_Path`: Alias of `Tensor_Npy_Path`, added so that training pipelines that expect an `Image_Npy_Path` column can directly reuse this CSV
 
 **Generated Mode:**
 - `Instance_Name`: Generated instance name (e.g., GEN_6x6_1)
@@ -103,6 +104,7 @@ print(tensor.dtype)  # float32
 - `{SOLVER}_Makespan`: Makespan found by each solver
 - `{SOLVER}_Wall_s`: Wall-clock time for each solver
 - `Tensor_Npy_Path`: Path to the tensor .npy file
+- `Image_Npy_Path`: Alias of `Tensor_Npy_Path`, added so that training pipelines that expect an `Image_Npy_Path` column can directly reuse this CSV
 
 ## Configuration
 
@@ -251,7 +253,7 @@ convert_dataset_to_tensors(csv_path, standardize=True)
 | Aspect | jssp_tensors | jssp_images |
 |--------|--------------|-------------|
 | **Output shape** | Variable `(n_jobs, n_machines)` | Fixed `(128, 128)` |
-| **Content** | Processing times (standardized) | ASCII values of .dzn file |
+| **Content** | Processing times (standardized) | Text encoding of concatenated MiniZinc model (`.mzn`) and instance (`.dzn`) |
 | **Representation** | Direct problem encoding | Indirect text encoding |
 | **Model compatibility** | Requires variable-size support | Works with fixed-size CNNs |
 | **Information preservation** | Exact problem structure | Lossy compression |

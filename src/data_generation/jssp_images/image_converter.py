@@ -1,23 +1,33 @@
 """
 Image conversion utilities for JSSP instances.
 
-This module converts JSSP instance files (.dzn) into structured grayscale image
-representations derived from the problem matrices and stores them as NumPy arrays
-(.npy files).
+This module implements the **Text-to-Image** encoding used in the JSSP Images
+pipeline, together with a legacy structured (matrix-based) encoder that is kept
+for ablation and backward compatibility.
 
-Default behavior:
-- Build the image from the JSSP data matrices (not ASCII).
-- Use PROC_TIME (JOBS×MACHINES) as a single-channel image, min–max normalized
-  to [0, 255], then resized to the target size. Output dtype: float32.
-- Optionally include MACHINE_OF_OP as a second channel (see parameters).
-- Optional z-score standardization can be enabled via normalize=True.
+Main pipeline (Text-to-Image, used by the CLI):
 
-Pipeline:
-1) Parse .dzn to extract: JOBS, MACHINES, PROC_TIME[J×M], MACHINE_OF_OP[J×M]
-2) Normalize selected matrix/matrices to [0, 255] (min–max; MACHINE_OF_OP scaled
-   over machine IDs)
-3) Resize each channel to target_size × target_size (LANCZOS)
-4) Stack channels if configured (default: one channel = PROC_TIME)
+- Reads the MiniZinc CP model (`.mzn`) and the instance data (`.dzn`) as text
+- Concatenates: `<model_text>` + two newlines + `<instance_text>`
+- Encodes the combined text as a byte sequence (`uint8`)
+- Reshapes the bytes into the largest possible square matrix
+- Resizes the matrix to the target size with LANCZOS and stores it as a
+  single-channel grayscale NumPy array (`float32`), with pixel values in
+  approximately `[0, 255]`
+- Optionally applies per-image z-score normalization
+
+Legacy / experimental utilities (matrix-based encoding):
+
+- Parse the `.dzn` file as structured data
+- Build images directly from the JSSP matrices (e.g., `PROC_TIME`,
+  optionally `MACHINE_OF_OP`)
+- Min–max normalize each channel to `[0, 255]`, resize to the target size,
+  and optionally apply per-channel z-score normalization
+
+The functions
+`convert_model_and_instance_to_grayscale_image` and `convert_dataset_to_images`
+implement the Text-to-Image pipeline used by the CLI, while
+`convert_text_to_grayscale_image` provides the legacy matrix-based encoding.
 """
 
 import os
@@ -201,7 +211,8 @@ def convert_text_to_grayscale_image(
     normalize: bool = False,
 ) -> np.ndarray:
     """
-    Convert a .dzn JSSP file into a structured grayscale image.
+    Legacy / experimental encoder: convert a `.dzn` JSSP file into a structured
+    grayscale image derived from the problem matrices.
 
     - Channel 0 (always): PROC_TIME[J×M], min–max normalized to [0, 255]
     - Channel 1 (optional): MACHINE_OF_OP[J×M] scaled over machine IDs to [0, 255]

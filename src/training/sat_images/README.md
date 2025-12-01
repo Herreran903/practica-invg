@@ -44,7 +44,7 @@ See [`config.yaml`](config.yaml:1) for all parameters:
 data:
   target_height: 128
   target_width: 128
-  time_limit_s: 1800.0
+  time_limit_s: 1200.0
   feat_time_column: null  # Feature extraction time
 
 training:
@@ -100,7 +100,7 @@ training/sat/results/sat_images_cnn_classification_20241124_151730/
 
 ### SAT-Specific
 - `--repeats`: K-Fold repetitions (e.g., 5 for 5x5)
-- `--time_limit`: Time limit in seconds (default: 1800)
+- `--time_limit`: Time limit in seconds (overrides `data.time_limit_s` from [`config.yaml`](src/training/sat_images/config.yaml:9))
 - `--feat_time_col`: Feature extraction time column name
 - `--solvers`: Comma-separated solver names to filter
 

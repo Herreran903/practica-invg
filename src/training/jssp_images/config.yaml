@@ -1,39 +1,30 @@
-# Configuration for JSSP Images CNN Training
-# This file centralizes all training parameters for reproducibility and easy experimentation
+# Configuration for JSSP Image-Based Solver Selection Training
+# Trains CNNs on grayscale image representations of JSSP instances.
 
-# ============================================================================
-# EXPERIMENT METADATA
-# ============================================================================
 experiment:
   name: "cnn_solver_selector_jssp_images"
   description: "CNN-based solver selection for JSSP using grayscale images"
   seed: 42  # Random seed for reproducibility
 
-# ============================================================================
-# DATA CONFIGURATION
-# ============================================================================
 data:
-  # Path to CSV with ground truth and image paths
+  # CSV with ground truth and image paths
   # Expected columns: Image_Npy_Path, *_Runtime_s, (optional) *_Score_S_rel
-  csv_path: "data/jssp/datasets/jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv"
+  csv_path: "data/jssp/datasets/jssp_cnn_data_images/ground_truth_jsp_generated_dataset.csv"
   
-  # Image specifications
+  # Image dimensions and channels
   image:
     target_height: 128
     target_width: 128
     channels: 1  # Grayscale
   
-  # Time limit for solver execution (seconds)
+  # Time limit for solver execution (seconds), used for multilabel labels and resolved_rate
   time_limit_s: 60.0
   
   # Whether to use *_Score_S_rel columns instead of *_Runtime_s for "best" solver
   use_score: false
 
-# ============================================================================
-# MODEL ARCHITECTURE
-# ============================================================================
 model:
-  # CNN architecture parameters
+  # CNN architecture for 128x128x1 input
   architecture:
     conv_layers:
       - filters: 16
@@ -60,11 +51,8 @@ model:
   # Learning rate for Adam optimizer
   learning_rate: 0.001
 
-# ============================================================================
-# TRAINING CONFIGURATION
-# ============================================================================
 training:
-  # Task type: classification | multilabel | regression
+  # Default task when running via Python API (CLI restricts to classification | multilabel)
   task: "classification"
   
   # Training hyperparameters
@@ -77,24 +65,21 @@ training:
     patience: 6
     restore_best_weights: true
   
-  # Cross-validation
+  # Number of K-Fold splits
   k_folds: 5
   
-  # Whether to use stratified k-fold (only for classification)
+  # Whether to use stratified K-Fold (only for classification)
   stratified: true
 
-# ============================================================================
-# OUTPUT CONFIGURATION
-# ============================================================================
 output:
-  # Parent directory for all training reports
-  # (relative to project root; e.g. results/jssp/images/...)
+  # Parent directory for training results (relative to project root)
+  # e.g. results/jssp/images/jssp_images_cnn_classification_...
   parent_dir: "results/jssp/images"
   
   # Whether to append task name to output directory
   append_task_to_dirname: false
   
-  # Timestamp format for run directories
+  # Timestamp format for output directories
   timestamp_format: "%Y%m%d_%H%M%S"
   
   # What to save per fold
@@ -104,10 +89,8 @@ output:
     plots: true        # confusion matrix, class bars, etc.
     reports: true      # classification_report.csv
 
-# ============================================================================
-# TASK-SPECIFIC CONFIGURATIONS
-# ============================================================================
-# These override general settings when specified task is selected
+# Task-specific configurations
+# These override general settings when a given task is selected.
 
 classification:
   # Metrics to compute

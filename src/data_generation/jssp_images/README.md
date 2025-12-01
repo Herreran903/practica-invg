@@ -10,7 +10,7 @@ The JSSP Images generator converts JSSP problem instances into grayscale images 
 2. **Converts instances to MiniZinc format** (.dzn files)
 3. **Runs multiple solvers** to collect performance metrics
 4. **Generates ground truth CSV** with solver runtimes and scores
-5. **Converts instances to grayscale images** (128x128 .npy files)
+5. **Converts instances to grayscale images** (128x128 .npy files) using a **Text-to-Image** encoding that concatenates the MiniZinc CP model (`.mzn`) with each instance (`.dzn`) and maps the resulting text bytes to pixel intensities
 
 ## Directory Structure
 
@@ -46,7 +46,8 @@ src/data_generation/jssp_images/
 Both modes produce the following outputs in `data/jssp/datasets/`:
 
 ```
-jsp_cnn_data_acad/  (or jsp_cnn_data_gen/)
+jsp_cnn_data_acad/         # Academic mode (JSPLIB benchmarks)
+jssp_cnn_data_images/      # Generated mode (random instances, Text-to-Image)
 ├── *.dzn                           # Instance files in MiniZinc format
 ├── ground_truth_*.csv              # Ground truth with solver metrics
 └── images/
@@ -80,8 +81,8 @@ jsp_cnn_data_acad/  (or jsp_cnn_data_gen/)
 Images are stored as NumPy arrays (.npy files):
 - **Shape**: (128, 128) by default (configurable)
 - **Data type**: float32
-- **Content**: Raw ASCII intensities from the .dzn file, reshaped and resized (values in [0, 255])
-- **Normalization**: None by default (paper-like). Optional z-score via `normalize=True` when using the converter in [`image_converter.py`](src/data_generation/jssp_images/image_converter.py)
+- **Content**: Grayscale encoding of the **concatenated MiniZinc CP model (`.mzn`) and instance data (`.dzn`)**. The combined text is encoded as bytes (`uint8`), reshaped into the largest possible square matrix, and resized to the target size (values in [0, 255]).
+- **Normalization**: None by default (paper-like). Optional per-image z-score via `normalize=True` when using the Text-to-Image converter in [`image_converter.py`](src/data_generation/jssp_images/image_converter.py)
 - **Visualization**: To reproduce paper-like figures, display with `cmap="gray"` and fixed range `vmin=0, vmax=255` (e.g., matplotlib)
 
 ## Configuration
@@ -100,7 +101,7 @@ models:
 output:
   base_dir: "data/jssp/datasets"
   academic_dir: "jsp_cnn_data_acad"
-  generated_dir: "jsp_cnn_data_gen"
+  generated_dir: "jssp_cnn_data_images"
 ```
 
 ### Image Parameters
@@ -170,8 +171,8 @@ python -m src.data_generation.jssp_images.cli --mode academic --skip-solvers --c
    python -m src.data_generation.jssp_images.cli --mode generated
    ```
 3. **Check outputs**:
-   - CSV: `data/jssp/datasets/jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv`
-   - Images: `data/jssp/datasets/jsp_cnn_data_gen/images/*.npy`
+   - CSV: `data/jssp/datasets/jssp_cnn_data_images/ground_truth_jsp_generated_dataset.csv`
+   - Images: `data/jssp/datasets/jssp_cnn_data_images/images/*.npy`
 4. **Use in training**:
    ```python
    import numpy as np
@@ -216,7 +217,7 @@ from src.data_generation.jssp_images import (
     load_config,
     prepare_academic_dataset,
     prepare_generated_dataset,
-    convert_dataset_to_images
+    convert_dataset_to_images,
 )
 
 # Load configuration
@@ -225,8 +226,12 @@ config = load_config("src/data_generation/jssp_images/config.yaml")
 # Generate academic dataset
 csv_path = prepare_academic_dataset(config)
 
-# Convert to images
-convert_dataset_to_images(csv_path, target_size=128)
+# Convert to images (Text-to-Image: model.mzn + .dzn)
+convert_dataset_to_images(
+    csv_path=csv_path,
+    cp_model_path=config.cp_model_path,
+    target_size=128,
+)
 ```
 
 ## Troubleshooting
