@@ -136,21 +136,32 @@ CSV must contain:
 training/sat/results/sat_images_cnn_classification_20241124_151730/
 ├── config.yaml
 ├── run_info.json
-├── metrics_summary_GLOBAL.json
-├── metrics_summary_per_rep.csv
+├── metrics_summary_GLOBAL.json      # Global stats across all folds × repeats
+├── metrics_summary_per_rep.csv      # Per-repetition aggregated metrics
 ├── rep_1/
-│   ├── metrics_per_fold.csv
-│   ├── metrics_summary.json
+│   ├── metrics_per_fold.csv         # Per-fold metrics (incl. resolved_rate per fold)
+│   ├── metrics_summary.json         # Aggregated stats for this repetition
 │   ├── accuracy_per_fold.png
 │   └── fold_1/
 │       ├── fold1_metrics.json
-│       ├── fold1_resolved_detail.csv  # SAT-specific
+│       ├── fold1_resolved_detail.csv  # SAT-specific per-instance resolution info
 │       ├── fold1_y_true.npy
 │       ├── fold1_y_pred.npy
 │       └── fold1_confusion.png
 └── rep_2/
     └── ...
 ```
+
+For **classification** and **multilabel** SAT runs, both per-repetition and global
+summaries aggregate not only the primary metric (`accuracy` or `f1_micro`) but also
+the resolved-rate across folds:
+
+- In each `rep_k/metrics_summary.json`:
+  - `resolved_rate_mean`, `resolved_rate_std`
+  - `resolved_rate_min`, `resolved_rate_max`
+- In `metrics_summary_GLOBAL.json` (across all folds × repeats):
+  - `resolved_rate_mean`, `resolved_rate_std`
+  - `resolved_rate_min`, `resolved_rate_max`
 
 ## CLI Arguments
 

@@ -108,6 +108,15 @@ The parent directory (`results/jssp/tensors`) and run naming follow
 [`config.yaml`](src/training/jssp_tensors/config.yaml:58) and the logic in
 [`prepare_output_directory()`](src/training/jssp_tensors/cli.py:76).
 
+For **multilabel** runs (and for classification when `resolved_rate` is computed),
+`metrics_summary.json` aggregates across folds both:
+
+- The primary metric (`accuracy` for classification, `f1_micro` for multilabel)
+- The resolved-rate statistics:
+
+  - `resolved_rate_mean`, `resolved_rate_std`
+  - `resolved_rate_min`, `resolved_rate_max`
+
 ## Related Modules
 
 - **jssp_images**: Training on 2D grayscale images (128x128x1)

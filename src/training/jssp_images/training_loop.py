@@ -461,7 +461,7 @@ def run_kfold(
     fold_df = pd.DataFrame(fold_results)
     fold_df.to_csv(os.path.join(root_outdir, "metrics_per_fold.csv"), index=False)
 
-    # Compute aggregated statistics
+    # Compute aggregated statistics for primary metric
     metric_key = {
         "classification": "accuracy",
         "multilabel": "f1_micro",
@@ -478,6 +478,14 @@ def run_kfold(
         "max": float(np.max(metric_values)),
         "folds": folds,
     }
+
+    # Optionally aggregate resolved_rate across folds (for tasks where it exists)
+    resolved_vals = [r["resolved_rate"] for r in fold_results if "resolved_rate" in r]
+    if resolved_vals:
+        summary["resolved_rate_mean"] = float(np.mean(resolved_vals))
+        summary["resolved_rate_std"] = float(np.std(resolved_vals))
+        summary["resolved_rate_min"] = float(np.min(resolved_vals))
+        summary["resolved_rate_max"] = float(np.max(resolved_vals))
 
     # Save summary
     with open(os.path.join(root_outdir, "metrics_summary.json"), "w") as f:

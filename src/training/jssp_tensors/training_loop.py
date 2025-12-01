@@ -262,12 +262,13 @@ def run_kfold(
     # Save per-fold table
     fold_df = pd.DataFrame(fold_results)
     fold_df.to_csv(os.path.join(root_outdir, "metrics_per_fold.csv"), index=False)
-
+    
+    # Primary metric to aggregate (accuracy for classification, F1-micro for multilabel)
     metric_key = {
         "classification": "accuracy",
         "multilabel": "f1_micro",
     }[task]
-
+    
     metric_values = [r[metric_key] for r in fold_results]
     summary = {
         "task": task,
@@ -279,6 +280,15 @@ def run_kfold(
         "folds": folds,
     }
 
+    # Optionally aggregate resolved_rate across folds (for tasks where it exists,
+    # e.g. multilabel JSSP tensors using evaluate_fold from jssp_images)
+    resolved_vals = [r["resolved_rate"] for r in fold_results if "resolved_rate" in r]
+    if resolved_vals:
+        summary["resolved_rate_mean"] = float(np.mean(resolved_vals))
+        summary["resolved_rate_std"] = float(np.std(resolved_vals))
+        summary["resolved_rate_min"] = float(np.min(resolved_vals))
+        summary["resolved_rate_max"] = float(np.max(resolved_vals))
+    
     with open(os.path.join(root_outdir, "metrics_summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
 

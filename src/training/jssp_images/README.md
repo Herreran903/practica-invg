@@ -173,7 +173,7 @@ results/jssp/images/jssp_images_cnn_classification_20241124_151730/
 ├── config.yaml                  # Configuration used
 ├── run_info.json               # Run metadata
 ├── metrics_per_fold.csv        # Detailed per-fold metrics
-├── metrics_summary.json        # Aggregated statistics
+├── metrics_summary.json        # Aggregated statistics (per task)
 ├── accuracy_per_fold.png       # Cross-fold comparison
 ├── README.txt                  # Human-readable summary
 └── fold_1/                     # Individual fold results
@@ -184,6 +184,12 @@ results/jssp/images/jssp_images_cnn_classification_20241124_151730/
     ├── fold1_class_bars.png
     └── fold1_cls_report.csv
 ```
+
+For multilabel (and classification when `resolved_rate` is computed), `metrics_summary.json`
+additionally reports aggregated resolved-rate statistics across folds:
+
+- `resolved_rate_mean`, `resolved_rate_std`
+- `resolved_rate_min`, `resolved_rate_max`
 
 ## Task-Specific Outputs
 

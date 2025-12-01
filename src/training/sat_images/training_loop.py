@@ -70,9 +70,10 @@ def run_kfold_with_repeats(
         "multilabel": "f1_micro",
         "regression": "mae",
     }[task]
-
+ 
     all_results = []
     per_rep_summary = []
+    resolved_all: List[float] = []
 
     for rep in range(repeats):
         seed_rep = base_seed + rep
@@ -98,13 +99,25 @@ def run_kfold_with_repeats(
         )
 
         all_results.extend([r[metric_key] for r in fold_results])
-        per_rep_summary.append(
-            {
-                "rep": rep + 1,
-                "mean": rep_summary["mean"],
-                "std": rep_summary["std"],
-            }
-        )
+
+        # Per-repetition summary for the primary metric
+        rep_row = {
+            "rep": rep + 1,
+            "mean": rep_summary["mean"],
+            "std": rep_summary["std"],
+        }
+
+        # Collect resolved_rate statistics per repetition if available
+        resolved_vals_rep = [r["resolved_rate"] for r in fold_results if "resolved_rate" in r]
+        if resolved_vals_rep:
+            rep_row["resolved_rate_mean"] = float(np.mean(resolved_vals_rep))
+            rep_row["resolved_rate_std"] = float(np.std(resolved_vals_rep))
+            rep_row["resolved_rate_min"] = float(np.min(resolved_vals_rep))
+            rep_row["resolved_rate_max"] = float(np.max(resolved_vals_rep))
+            # Also accumulate all resolved_rate values across repetitions
+            resolved_all.extend(resolved_vals_rep)
+
+        per_rep_summary.append(rep_row)
 
         print(
             f"[REP {rep+1}] {metric_key.upper()}: {rep_summary['mean']:.4f} ± {rep_summary['std']:.4f}"
@@ -124,6 +137,13 @@ def run_kfold_with_repeats(
         "folds": folds,
         "repeats": repeats,
     }
+
+    # Global resolved_rate aggregated across all folds and repetitions
+    if resolved_all:
+        global_summary["resolved_rate_mean"] = float(np.mean(resolved_all))
+        global_summary["resolved_rate_std"] = float(np.std(resolved_all))
+        global_summary["resolved_rate_min"] = float(np.min(resolved_all))
+        global_summary["resolved_rate_max"] = float(np.max(resolved_all))
 
     # Save per-repetition summary
     pd.DataFrame(per_rep_summary).to_csv(
@@ -313,6 +333,14 @@ def _run_single_kfold(
         "folds": folds,
     }
 
+    # Aggregate resolved_rate across folds (classification and multilabel where available)
+    resolved_vals = [r["resolved_rate"] for r in fold_results if "resolved_rate" in r]
+    if resolved_vals:
+        summary["resolved_rate_mean"] = float(np.mean(resolved_vals))
+        summary["resolved_rate_std"] = float(np.std(resolved_vals))
+        summary["resolved_rate_min"] = float(np.min(resolved_vals))
+        summary["resolved_rate_max"] = float(np.max(resolved_vals))
+ 
     # Save summary
     with open(os.path.join(outdir, "metrics_summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
