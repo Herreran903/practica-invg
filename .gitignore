@@ -118,7 +118,6 @@ logs/
 runs/                 # TensorBoard
 checkpoints/
 **/checkpoints/
-**/results/
 **/*.pt
 **/*.pth
 **/*.ckpt
@@ -127,10 +126,6 @@ checkpoints/
 **/*.pkl
 **/*.joblib
 
-# Datos grandes (con excepciones para metadatos)
-data/**
-!data/**/.gitkeep
-!data/**/*.md
 
 # MiniZinc artefactos de compilación/ejecución
 *.fzn

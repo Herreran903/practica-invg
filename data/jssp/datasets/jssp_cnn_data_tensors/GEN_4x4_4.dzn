@@ -1,0 +1,5 @@
+JOBS = 4;
+MACHINES = 4;
+
+PROC_TIME = array2d(SET_JOBS, SET_POS, [2, 16, 14, 9, 9, 18, 2, 14, 5, 2, 11, 20, 15, 16, 15, 16]);
+MACHINE_OF_OP = array2d(SET_JOBS, SET_POS, [2, 1, 3, 4, 1, 3, 4, 2, 2, 1, 3, 4, 1, 4, 3, 2]);
