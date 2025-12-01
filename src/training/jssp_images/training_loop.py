@@ -22,6 +22,67 @@ from .data_utils import bss_index, build_labels, make_dataset
 from .model_builder import build_model_from_config
 
 
+class SGDLearningRateMomentumScheduler(tf.keras.callbacks.Callback):
+    """
+    Callback that applies a linear schedule to SGD with Nesterov momentum.
+
+    At the beginning of each epoch:
+      - learning_rate is decreased by lr_step (floored at min_lr)
+      - momentum is increased by momentum_step (capped at max_momentum)
+
+    This mirrors the schedule described in the paper.
+    """
+
+    def __init__(
+        self,
+        lr_step: float = 0.003,
+        momentum_step: float = 0.001,
+        min_lr: float = 0.0,
+        max_momentum: float = 0.99,
+    ) -> None:
+        super().__init__()
+        self.lr_step = float(lr_step)
+        self.momentum_step = float(momentum_step)
+        self.min_lr = float(min_lr)
+        self.max_momentum = float(max_momentum)
+
+    def on_epoch_begin(self, epoch: int, logs=None) -> None:
+        optimizer = self.model.optimizer  # type: ignore[attr-defined]
+        if not isinstance(optimizer, tf.keras.optimizers.SGD):
+            # Only adjust SGD optimizers (as used in this project)
+            return
+
+        # Safely read current values (support tf.Variable, tensors, or plain floats)
+        lr_obj = getattr(optimizer, "learning_rate", None)
+        mom_obj = getattr(optimizer, "momentum", None)
+        if lr_obj is None or mom_obj is None:
+            return
+
+        try:
+            lr = float(tf.keras.backend.get_value(lr_obj))
+        except Exception:
+            lr = float(lr_obj)
+
+        try:
+            momentum = float(tf.keras.backend.get_value(mom_obj))
+        except Exception:
+            momentum = float(mom_obj)
+
+        # Apply linear schedule
+        new_lr = max(self.min_lr, lr - self.lr_step)
+        new_momentum = min(self.max_momentum, momentum + self.momentum_step)
+
+        # Assign back, preferring .assign() when available
+        if hasattr(lr_obj, "assign"):
+            lr_obj.assign(new_lr)
+        else:
+            optimizer.learning_rate = new_lr
+
+        if hasattr(mom_obj, "assign"):
+            mom_obj.assign(new_momentum)
+        else:
+            optimizer.momentum = new_momentum
+
 def train_fold(
     train_df: pd.DataFrame,
     val_df: pd.DataFrame,
@@ -68,6 +129,8 @@ def train_fold(
     epochs = training_cfg.get("epochs", 25)
     batch_size = training_cfg.get("batch_size", 64)
     patience = training_cfg.get("early_stopping_patience", 6)
+    lr_step = training_cfg.get("lr_step", 0.003)
+    momentum_step = training_cfg.get("momentum_step", 0.001)
 
     # Time limit is required by build_labels for multilabel/regression tasks.
     # For consistency with run_kfold, fall back to 60s if not provided.
@@ -113,14 +176,18 @@ def train_fold(
     # Build model
     model = build_model_from_config(config, output_dim=output_dim, task=task)
 
-    # Setup callbacks
+    # Setup callbacks: EarlyStopping + SGD learning-rate/momentum scheduler
     callbacks = [
         tf.keras.callbacks.EarlyStopping(
             monitor="val_loss",
             patience=patience,
             restore_best_weights=True,
             verbose=1,
-        )
+        ),
+        SGDLearningRateMomentumScheduler(
+            lr_step=lr_step,
+            momentum_step=momentum_step,
+        ),
     ]
 
     # Train model

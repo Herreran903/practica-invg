@@ -48,16 +48,21 @@ model:
     
     dropout_dense: 0.5
   
-  # Learning rate for Adam optimizer
-  learning_rate: 0.001
+  # Optimizer hyperparameters (SGD with Nesterov momentum, as in the paper)
+  learning_rate: 0.03
+  momentum: 0.9
 
 training:
   # Default task when running via Python API (CLI restricts to classification | multilabel)
   task: "classification"
   
-  # Training hyperparameters
+  # Training hyperparameters (paper defaults)
   epochs: 25
-  batch_size: 64
+  batch_size: 128
+  learning_rate: 0.03
+  momentum: 0.9
+  lr_step: 0.003       # Per-epoch decrement of learning rate
+  momentum_step: 0.001 # Per-epoch increment of momentum
   
   # Early stopping configuration
   early_stopping:

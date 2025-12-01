@@ -230,6 +230,11 @@ def make_dataset(
         img = tf.numpy_function(load_npy_image, [p], tf.float32)
         img.set_shape([target_h, target_w, 1])
 
+        # Per-image standardization to zero mean and unit variance (paper setting)
+        mean = tf.reduce_mean(img)
+        std = tf.math.reduce_std(img)
+        img = (img - mean) / tf.maximum(std, tf.constant(1e-8, dtype=img.dtype))
+
         if task == "classification":
             t = tf.cast(t, tf.int32)
         else:

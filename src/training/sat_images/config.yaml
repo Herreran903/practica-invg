@@ -24,7 +24,7 @@ data:
 
 model:
   # CNN architecture for 128x128x1 input
-  # Filters for each Conv2D layer
+  # Filters for each Conv2D layer (three Conv2D+MaxPool+Dropout blocks)
   conv_filters: [16, 32, 64]
   
   # Kernel size for Conv2D layers
@@ -33,24 +33,27 @@ model:
   # Pool size for MaxPooling2D layers
   pool_size: 2
   
-  # Dropout rate after convolutions
+  # Dropout rate after convolutions (applied after each block)
   dropout_conv: 0.25
   
-  # Number of units in dense layer
+  # Number of units in dense layers (two Dense layers with Dropout in between)
   dense_units: 256
   
-  # Dropout rate after dense layer
+  # Dropout rate after first dense layer
   dropout_dense: 0.5
 
 training:
   # Number of training epochs
   epochs: 25
   
-  # Batch size
-  batch_size: 64
+  # Batch size (paper setting)
+  batch_size: 128
   
-  # Learning rate for Adam optimizer
-  learning_rate: 0.001
+  # SGD with Nesterov momentum (paper defaults)
+  learning_rate: 0.03
+  momentum: 0.9
+  lr_step: 0.003       # Per-epoch decrement of learning rate
+  momentum_step: 0.001 # Per-epoch increment of momentum
   
   # Number of K-Fold splits
   k_folds: 5

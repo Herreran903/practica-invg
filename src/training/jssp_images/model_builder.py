@@ -25,7 +25,8 @@ def build_cnn(
     dropout_conv: float = 0.25,
     dense_units: int = 256,
     dropout_dense: float = 0.5,
-    learning_rate: float = 1e-3,
+    learning_rate: float = 0.03,
+    momentum: float = 0.9,
 ) -> tf.keras.Model:
     """
     Build and compile a CNN model for JSSP solver selection.
@@ -68,7 +69,8 @@ def build_cnn(
     inputs = tf.keras.Input(shape=input_shape, name="image_input")
     x = inputs
 
-    # Convolutional blocks
+    # Convolutional blocks: (Conv2D + MaxPooling2D + Dropout) repeated
+    # By default uses three blocks with filters [16, 32, 64].
     for i, filters in enumerate(conv_filters):
         x = tf.keras.layers.Conv2D(
             filters,
@@ -78,14 +80,15 @@ def build_cnn(
             name=f"conv_{i+1}",
         )(x)
         x = tf.keras.layers.MaxPooling2D(pool_size, name=f"pool_{i+1}")(x)
+        x = tf.keras.layers.Dropout(
+            dropout_conv, name=f"dropout_conv_{i+1}"
+        )(x)
 
-    # Dropout after convolutions
-    x = tf.keras.layers.Dropout(dropout_conv, name="dropout_conv")(x)
-
-    # Flatten and dense layers
+    # Flatten and dense layers: two dense layers with dropout in between
     x = tf.keras.layers.Flatten(name="flatten")(x)
-    x = tf.keras.layers.Dense(dense_units, activation="relu", name="dense")(x)
-    x = tf.keras.layers.Dropout(dropout_dense, name="dropout_dense")(x)
+    x = tf.keras.layers.Dense(dense_units, activation="relu", name="dense_1")(x)
+    x = tf.keras.layers.Dropout(dropout_dense, name="dropout_dense_1")(x)
+    x = tf.keras.layers.Dense(dense_units, activation="relu", name="dense_2")(x)
 
     # Task-specific output layer
     if task == "classification":
@@ -110,7 +113,11 @@ def build_cnn(
     # Build and compile model
     model = tf.keras.Model(inputs=inputs, outputs=outputs, name=f"cnn_{task}")
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
+        optimizer=tf.keras.optimizers.SGD(
+            learning_rate=learning_rate,
+            momentum=momentum,
+            nesterov=True,
+        ),
         loss=loss,
         metrics=metrics,
     )
@@ -150,7 +157,8 @@ def build_model_from_config(
     target_w = data_cfg.get("target_width", 128)
     input_shape = (target_h, target_w, 1)
 
-    # Extract architecture parameters
+    # Extract architecture parameters (kept for backward compatibility; defaults
+    # match the paper: three Conv2D blocks with filters [16, 32, 64])
     conv_filters = model_cfg.get("conv_filters", [16, 32, 64])
     conv_kernel_size = model_cfg.get("conv_kernel_size", 3)
     pool_size = model_cfg.get("pool_size", 2)
@@ -158,9 +166,10 @@ def build_model_from_config(
     dense_units = model_cfg.get("dense_units", 256)
     dropout_dense = model_cfg.get("dropout_dense", 0.5)
 
-    # Extract training parameters
+    # Extract training parameters (SGD with Nesterov momentum, as in the paper)
     training_cfg = config.get("training", {})
-    learning_rate = training_cfg.get("learning_rate", 1e-3)
+    learning_rate = training_cfg.get("learning_rate", 0.03)
+    momentum = training_cfg.get("momentum", 0.9)
 
     return build_cnn(
         input_shape=input_shape,
@@ -173,6 +182,7 @@ def build_model_from_config(
         dense_units=dense_units,
         dropout_dense=dropout_dense,
         learning_rate=learning_rate,
+        momentum=momentum,
     )
 
 

@@ -56,6 +56,62 @@ sat:
   invalid_statuses: ["timeout", "memout", "crash"]
 ```
 
+## Architecture and training details (paper configuration)
+
+The SAT image CNN **reuses exactly the same architecture and optimizer** as the
+JSSP images model, and the training code is shared between both modules.
+
+1. **Input**
+   - 128×128×1 grayscale images loaded from `.npy` files.
+   - Each image is **standardized per instance to zero mean and unit variance**
+     inside [`make_dataset`](src/training/jssp_images/data_utils.py:179).
+
+2. **Convolutional blocks**
+   Implemented in [`build_cnn`](src/training/jssp_images/model_builder.py:18):
+
+   - 3 consecutive blocks, each of the form:
+     - `Conv2D(filters, kernel_size=3, padding="same", activation="relu")`
+     - `MaxPooling2D(pool_size=2)`
+     - `Dropout(rate=0.25)`
+   - Default filters per block:
+     - Block 1: 16 filters
+     - Block 2: 32 filters
+     - Block 3: 64 filters
+
+3. **Dense part**
+   - `Flatten`
+   - `Dense(256, activation="relu")`
+   - `Dropout(rate=0.5)`
+   - `Dense(256, activation="relu")`
+
+4. **Output layer**
+   - For **multilabel experiments in the paper** (recommended setting):
+     - `Dense(C, activation="sigmoid")` for C solvers.
+   - Classification and regression remain available in
+     [`build_cnn`](src/training/jssp_images/model_builder.py:18) for ablations:
+     - Classification: `softmax` output.
+     - Regression: `linear` output.
+
+5. **Optimizer and schedule**
+   - Optimizer: `SGD` with **Nesterov momentum**, configured via
+     [`config.yaml`](src/training/sat_images/config.yaml:25):
+     - Initial learning rate: **0.03**
+     - Initial momentum: **0.9**
+   - Per-epoch linear schedule (implemented once in the shared JSSP training
+     loop via [`SGDLearningRateMomentumScheduler`](src/training/jssp_images/training_loop.py:25),
+     which SAT reuses):
+     - `learning_rate ← max(0, learning_rate − 0.003)`
+     - `momentum     ← min(0.99, momentum + 0.001)`
+
+6. **Batch size and epochs**
+   - Batch size: **128** (paper setting; see
+     [`training.batch_size`](src/training/sat_images/config.yaml:45)).
+   - Epochs: 25 (with EarlyStopping on `val_loss` and patience 6).
+
+This configuration is the **default** when using the provided
+[`config.yaml`](src/training/sat_images/config.yaml:1) and replicates exactly
+the CNN, optimizer, activations, dropout, and training strategy used in the paper.
+
 ## SAT-Specific Metrics
 
 ### Resolved Rate
@@ -159,7 +215,7 @@ python -m src.training.sat_images.cli \
   --csv data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv \
   --task multilabel \
   --epochs 30 \
-  --time_limit 1800
+  --time_limit 1200
 ```
 
 ```bash
@@ -169,7 +225,7 @@ python -m src.training.sat_images.cli \
   --task multilabel \
   --folds 5 \
   --repeats 5 \
-  --time_limit 1800
+  --time_limit 1200
 ```
 
 ```bash

@@ -99,12 +99,26 @@ model:
   dropout_dense: 0.5
 ```
 
-### Training Parameters
+### Training Parameters (paper configuration)
 ```yaml
 training:
+  # Number of epochs
   epochs: 25
-  batch_size: 64
-  learning_rate: 0.001
+
+  # Batch size (paper setting)
+  batch_size: 128
+
+  # SGD with Nesterov momentum (paper defaults)
+  learning_rate: 0.03
+  momentum: 0.9
+
+  # Linear schedule applied at the beginning of each epoch
+  #   lr(t+1)        = max(0, lr(t) - lr_step)
+  #   momentum(t+1)  = min(0.99, momentum(t) + momentum_step)
+  lr_step: 0.003       # Per-epoch decrement of learning rate
+  momentum_step: 0.001 # Per-epoch increment of momentum
+
+  # Cross-validation setup
   k_folds: 5
   early_stopping_patience: 6
   seed: 42
@@ -222,22 +236,55 @@ fold_results, summary = run_kfold(
 print(f"Mean accuracy: {summary['mean']:.4f} ± {summary['std']:.4f}")
 ```
 
-## Architecture Details
+## Architecture and Training Details (paper configuration)
 
-The CNN architecture consists of:
-1. **Input**: 128x128x1 grayscale images
-2. **Convolutional Blocks**: 3 blocks of Conv2D + MaxPooling2D
-   - Block 1: 16 filters, 3x3 kernel
-   - Block 2: 32 filters, 3x3 kernel
-   - Block 3: 64 filters, 3x3 kernel
-3. **Dropout**: 0.25 after convolutions
-4. **Flatten**: Convert to 1D
-5. **Dense**: 256 units with ReLU
-6. **Dropout**: 0.5 after dense
-7. **Output**: Task-specific activation
-   - Classification: Softmax
-   - Multilabel: Sigmoid
-   - Regression: Linear
+For the JSSP image-based solver selection experiments described in the paper, the
+training module uses a **fixed CNN + SGD configuration**:
+
+1. **Input**
+   - 128×128×1 grayscale images
+   - Each image is **standardized per instance** to zero mean and unit standard
+     deviation inside [`make_dataset`](src/training/jssp_images/data_utils.py:179).
+
+2. **Convolutional blocks**
+   - 3 consecutive blocks, each of the form:
+     - `Conv2D(filters, kernel_size=3, padding="same", activation="relu")`
+     - `MaxPooling2D(pool_size=2)`
+     - `Dropout(rate=0.25)`
+   - Default filters per block:
+     - Block 1: 16 filters
+     - Block 2: 32 filters
+     - Block 3: 64 filters
+
+3. **Dense part**
+   - `Flatten`
+   - `Dense(256, activation="relu")`
+   - `Dropout(rate=0.5)`
+   - `Dense(256, activation="relu")`
+
+4. **Output layer**
+   - **Multilabel (paper experiments):** `Dense(C, activation="sigmoid")`
+   - Classification and regression variants remain available in
+     [`build_cnn`](src/training/jssp_images/model_builder.py:18) for debugging/ablation:
+     - Classification: `softmax` output with cross-entropy loss
+     - Regression: `linear` output with MAE loss
+
+5. **Optimizer and schedule**
+   - Optimizer: `SGD` with **Nesterov momentum**
+     - Initial learning rate: **0.03**
+     - Initial momentum: **0.9**
+   - Per-epoch linear schedule (implemented via
+     [`SGDLearningRateMomentumScheduler`](src/training/jssp_images/training_loop.py:25)):
+     - `learning_rate ← max(0, learning_rate − 0.003)`
+     - `momentum     ← min(0.99, momentum + 0.001)`
+
+6. **Batch size and epochs**
+   - Batch size: **128**
+   - Epochs: 25 (with early stopping on `val_loss`)
+
+This configuration is the **default** when using the provided
+[`config.yaml`](src/training/jssp_images/config.yaml:1) and corresponds exactly
+to the CNN and training strategy described in the paper.
 
 ## Baseline Comparison
 
