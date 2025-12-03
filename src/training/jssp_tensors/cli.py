@@ -68,6 +68,11 @@ Examples:
     parser.add_argument("--learning_rate", type=float)
     parser.add_argument("--out_parent", type=str)
     parser.add_argument("--run_name", type=str)
+    parser.add_argument(
+        "--solvers",
+        type=str,
+        help="Comma-separated solver names to use (e.g. 'solverA,solverB')",
+    )
     parser.add_argument("--seed", type=int)
 
     return parser.parse_args()
@@ -163,6 +168,28 @@ def main():
     except ValueError as e:
         print(f"❌ {e}")
         sys.exit(1)
+
+    # Optional solver filtering (aligned with sat_images and jssp_images CLIs)
+    if getattr(args, "solvers", None):
+        selected = [s.strip() for s in args.solvers.split(",") if s.strip()]
+        print(f"\nFiltering to solvers: {selected}")
+
+        keep_runtime = [
+            f"{s}_Runtime_s" for s in selected if f"{s}_Runtime_s" in df.columns
+        ]
+        keep_score = [
+            f"{s}_Score_S_rel" for s in selected if f"{s}_Score_S_rel" in df.columns
+        ]
+
+        if not keep_runtime:
+            print("❌ Error: no matching runtime columns found for selected solvers")
+            sys.exit(1)
+
+        base_cols = ["Image_Npy_Path"]
+        df = df[base_cols + keep_runtime + keep_score]
+        solver_cols = {"runtime": keep_runtime, "score": keep_score}
+
+        print(f"✓ Filtered to {len(keep_runtime)} solvers")
 
     outdir = prepare_output_directory(config, args.task)
     print(f"\n📁 Output: {outdir}")

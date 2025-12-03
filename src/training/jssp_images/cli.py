@@ -131,6 +131,11 @@ Examples:
         help="Name prefix for this run (default: jssp_images_cnn)",
     )
     parser.add_argument(
+        "--solvers",
+        type=str,
+        help="Comma-separated solver names to use (e.g. 'solverA,solverB')",
+    )
+    parser.add_argument(
         "--seed", type=int, help="Random seed for reproducibility (overrides config)"
     )
 
@@ -273,6 +278,28 @@ def main():
     except ValueError as e:
         print(f"❌ Error: {e}")
         sys.exit(1)
+
+    # Optional solver filtering (similar to SAT training CLI)
+    if getattr(args, "solvers", None):
+        selected = [s.strip() for s in args.solvers.split(",") if s.strip()]
+        print(f"\nFiltering to solvers: {selected}")
+
+        keep_runtime = [
+            f"{s}_Runtime_s" for s in selected if f"{s}_Runtime_s" in df.columns
+        ]
+        keep_score = [
+            f"{s}_Score_S_rel" for s in selected if f"{s}_Score_S_rel" in df.columns
+        ]
+
+        if not keep_runtime:
+            print("❌ Error: no matching runtime columns found for selected solvers")
+            sys.exit(1)
+
+        base_cols = ["Image_Npy_Path"]
+        df = df[base_cols + keep_runtime + keep_score]
+        solver_cols = {"runtime": keep_runtime, "score": keep_score}
+
+        print(f"✓ Filtered to {len(keep_runtime)} solvers")
 
     # Create output directory
     outdir = prepare_output_directory(config, args.task)

@@ -62,12 +62,58 @@ python -m src.training.jssp_images.cli \
 ```bash
 python -m src.training.jssp_images.cli \
   --config src/training/jssp_images/config.yaml \
-  --csv data/jssp/datasets/jsp_cnn_data_gen/ground_truth_jsp_generated_dataset.csv \
+  --csv data/jssp/datasets/jssp_cnn_data_images/ground_truth_jsp_generated_dataset.csv \
   --task classification \
   --epochs 50 \
   --batch_size 32 \
   --learning_rate 0.0001
 ```
+
+### Filtering specific solvers with --solvers
+
+The CSV [`ground_truth_jsp_generated_dataset.csv`](data/jssp/datasets/jssp_cnn_data_images/ground_truth_jsp_generated_dataset.csv) contains
+runtime columns for the following solvers:
+
+- `CBC_DEF_Runtime_s`
+- `SCIP_DEF_Runtime_s`
+- `HIGHS_DEF_Runtime_s`
+- `CPLEX_DEF_Runtime_s`
+- `GUROBI_DEF_Runtime_s`
+
+Their corresponding `--solvers` names are:
+
+- `CBC_DEF`
+- `SCIP_DEF`
+- `HIGHS_DEF`
+- `CPLEX_DEF`
+- `GUROBI_DEF`
+
+#### Example: classification with a subset of solvers
+
+Train a classifier using only `CBC_DEF`, `SCIP_DEF` and `CPLEX_DEF`:
+
+```bash
+python -m src.training.jssp_images.cli \
+  --csv data/jssp/datasets/jssp_cnn_data_images/ground_truth_jsp_generated_dataset.csv \
+  --task classification \
+  --solvers CBC_DEF,SCIP_DEF,CPLEX_DEF \
+  --epochs 30 \
+  --folds 5
+```
+
+#### Example: multilabel with all available solvers
+
+Train a multilabel model using all five solvers from the CSV:
+
+```bash
+python -m src.training.jssp_images.cli \
+  --csv data/jssp/datasets/jssp_cnn_data_images/ground_truth_jsp_generated_dataset.csv \
+  --task multilabel \
+  --solvers CBC_DEF,SCIP_DEF,HIGHS_DEF,CPLEX_DEF,GUROBI_DEF \
+  --epochs 25
+```
+
+If `--solvers` is omitted, the CLI will use all solver columns detected in the CSV.
 
 ## Configuration
 

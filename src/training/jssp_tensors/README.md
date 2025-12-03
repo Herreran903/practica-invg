@@ -42,6 +42,51 @@ The CLI supports **classification** and **multilabel** tasks. Regression-style
 experiments on tensors can be implemented via the Python API if needed, but are
 not exposed as a CLI task.
 
+### Filtering specific solvers with --solvers
+
+The tensor CSV (e.g. `ground_truth_jsp_generated_dataset.csv`) typically contains
+runtime columns for several solvers, such as:
+
+- `CBC_DEF_Runtime_s`
+- `SCIP_DEF_Runtime_s`
+- `HIGHS_DEF_Runtime_s`
+- `CPLEX_DEF_Runtime_s`
+- `GUROBI_DEF_Runtime_s`
+
+The corresponding `--solvers` names are the prefixes before `_Runtime_s`:
+
+- `CBC_DEF`
+- `SCIP_DEF`
+- `HIGHS_DEF`
+- `CPLEX_DEF`
+- `GUROBI_DEF`
+
+#### Example: classification with a subset of solvers
+
+Train a classifier using only `CBC_DEF`, `SCIP_DEF` and `CPLEX_DEF`:
+
+```bash
+python -m src.training.jssp_tensors.cli \
+  --csv data/jssp/datasets/jssp_cnn_data_tensors/ground_truth_jsp_generated_dataset.csv \
+  --task classification \
+  --solvers CBC_DEF,SCIP_DEF,CPLEX_DEF \
+  --epochs 30
+```
+
+#### Example: multilabel with all available solvers
+
+Train a multilabel model using all five solvers:
+
+```bash
+python -m src.training.jssp_tensors.cli \
+  --csv data/jssp/datasets/jssp_cnn_data_tensors/ground_truth_jsp_generated_dataset.csv \
+  --task multilabel \
+  --solvers CBC_DEF,SCIP_DEF,HIGHS_DEF,CPLEX_DEF,GUROBI_DEF \
+  --epochs 30
+```
+
+If `--solvers` is omitted, the CLI will use all solver columns detected in the CSV.
+
 ## Configuration
 
 See [`config.yaml`](config.yaml:1) for all parameters:
