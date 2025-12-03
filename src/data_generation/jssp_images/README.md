@@ -187,26 +187,134 @@ python -m src.data_generation.jssp_images.cli --mode academic --skip-solvers --c
    ```
 
 ## Dependencies
-
+ 
 Required Python packages:
 - `numpy`: Array operations and image storage
 - `pandas`: CSV handling
 - `Pillow (PIL)`: Image resizing
 - `PyYAML`: Configuration file parsing
 - `job-shop-lib`: JSSP instance loading and generation
-
-External dependencies:
-- **MiniZinc**: Constraint programming solver framework
-- **Solvers**: At least one solver (Gecode, Chuffed, CP-SAT, CBC, SCIP, HiGHS, CPLEX, or Gurobi)
-
+ 
 Install Python dependencies:
 ```bash
 pip install numpy pandas Pillow PyYAML job-shop-lib
 ```
-
-Install MiniZinc:
-- Download from: https://www.minizinc.org/
-- Ensure `minizinc` is in your PATH
+ 
+### MiniZinc and solver backends
+ 
+This module relies on MiniZinc to benchmark multiple solvers. The execution
+is orchestrated by [`minizinc_solver.py`](src/data_generation/jssp_images/minizinc_solver.py:1),
+which implements a **hybrid** strategy:
+ 
+1. First, it tries to use the official Python `minizinc` package (if installed).
+2. If that fails (e.g., solver not registered, missing DLL, Python package
+   not available), it automatically **falls back** to calling the `minizinc`
+   binary via `subprocess`.
+ 
+#### Recommended MiniZinc installation
+ 
+There are two common ways to install MiniZinc:
+ 
+- **Official MiniZinc bundle (recommended for CP)**
+  - MiniZincIDE for macOS / Linux / Windows: includes CP drivers such as
+    Gecode and Chuffed already configured.
+  - On macOS it is typically located at:
+    - `/Applications/MiniZincIDE.app/Contents/Resources/minizinc`
+  - This is usually the easiest way to get CP solvers working.
+ 
+- **Package manager installation (e.g., Homebrew)**
+  - On macOS:
+    ```bash
+    brew install minizinc
+    ```
+  - This usually provides mainly MIP solvers (CBC, SCIP, HiGHS, etc.) and
+    **does not include CP drivers** (Gecode/Chuffed).
+ 
+At runtime, the code tries to locate the `minizinc` binary in the following order:
+ 
+1. The bundle binary (if present and accessible).
+2. A binary pointed to by the `MINIZINC_BIN` environment variable (if set).
+3. A binary found on the system `PATH` (plain `minizinc`).
+ 
+#### Supported solvers and licenses
+ 
+The configuration files
+[`config.yaml`](src/data_generation/jssp_images/config.yaml:1)
+and
+[`src/data_generation/jssp_tensors/config.yaml`](src/data_generation/jssp_tensors/config.yaml:1)
+define both CP and MIP solvers:
+ 
+- **CP (theoretically supported)**:
+  - `gecode` (`GECODE_FF`)
+  - `chuffed` (`CHUFFED_IO`)
+  - `cp-sat` / OR-Tools CP-SAT (`CPSAT_FF`, requires a dedicated MiniZinc driver)
+ 
+- **MIP (typical backends)**:
+  - CBC / COIN-BC (`CBC_DEF`) – open source
+  - SCIP (`SCIP_DEF`) – free academic license
+  - HiGHS (`HIGHS_DEF`) – open source
+  - CPLEX (`CPLEX_DEF`) – **requires an IBM CPLEX license**
+  - Gurobi (`GUROBI_DEF`) – **requires a Gurobi license**
+ 
+In practice, which solvers can actually run depends on:
+ 
+- What `minizinc --solvers` reports (i.e., which drivers are really installed).
+- The licensing and DLL environment:
+  - CPLEX and Gurobi need their shared libraries (DLLs/.dylib) configured
+    and a valid license.
+  - HiGHS requires that `libhighs` is locatable by MiniZinc.
+ 
+#### Behavior when some solvers are missing
+ 
+The module is designed to **degrade gracefully**:
+ 
+- If the Python MiniZinc API cannot use a solver (e.g., `minizinc.Solver.lookup("gecode")`
+  fails or `solve()` raises a DLL error), it prints a short message
+  `[MiniZinc-Python] ... Falling back to CLI.` and tries to execute the same
+  solver via the `minizinc` binary.
+- If the binary also does not recognize that solver (for example, there is
+  no driver with tag `gecode`), that solver is marked as failed with:
+  - `returncode != 0`
+  - `solved_binary = 0`
+  - `makespan = inf`
+ 
+During dataset generation:
+ 
+- The columns corresponding to that solver (`{KEY}_Runtime_s`,
+  `{KEY}_Makespan`, `{KEY}_Wall_s`) are filled with:
+  - `"NA"` for runtimes and wall-clock time.
+  - `"NA"` or `"inf"` for makespan, depending on context.
+- Other solvers that do run successfully fill their metrics with numeric values,
+  and `Winner_Key` is computed exclusively among solvers that actually solved
+  the instance (`solved_binary == 1`).
+- The experiment **does not stop** just because one or more solvers are missing.
+ 
+This allows running the pipeline even in “partial” environments (for example,
+only CBC/SCIP/HiGHS installed) without treating it as a failure.
+ 
+#### Reproducing full vs. basic results
+ 
+- **Basic, fully open-source setup**:
+  - Install MiniZinc (bundle or brew) + Python `minizinc`.
+  - Ensure at least the following solvers work:
+    - CBC (`coin-bc`)
+    - SCIP (`scip`)
+    - HiGHS (`highs`)
+  - The generated datasets will include columns for these solvers, and the
+    training pipelines can use them directly or filter them via `--solvers`.
+ 
+- **Full reproduction with proprietary solvers (CPLEX/Gurobi)**:
+  - In addition to the above, install:
+    - IBM CPLEX Studio and configure its DLL (or use a MiniZinc bundle that
+      ships with CPLEX support).
+    - Gurobi and configure a valid license.
+  - Verify that `minizinc --solvers` lists both `cplex` and `gurobi`.
+  - In this environment, the `CPLEX_DEF_*` and `GUROBI_DEF_*` columns in the
+    CSV will contain valid metrics and can be included in training or analysis.
+ 
+In all cases, if a specific solver is not available in the current environment,
+the code will mark it as “not available” at the metrics level (NA/inf) without
+aborting the pipeline or flooding the console with repeated error messages.
 
 ## Module API
 

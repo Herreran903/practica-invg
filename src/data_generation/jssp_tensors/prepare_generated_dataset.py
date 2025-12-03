@@ -200,14 +200,25 @@ def prepare_generated_dataset(config: JSPPTensorsConfig) -> str:
 
                     for key in config_keys:
                         st = results[key]
-                        makespan = (
-                            st["makespan"] if st["makespan"] != float("inf") else "inf"
-                        )
-                        row += [
-                            f"{st['runtime']:.3f}",
-                            makespan,
-                            f"{st['wall_time_s']:.3f}",
-                        ]
+                        rc = st.get("returncode", 0)
+
+                        # Mark solvers that failed (missing config, license, etc.)
+                        # with clear NA values, while keeping successful runs numeric.
+                        if rc != 0:
+                            runtime_str = "NA"
+                            makespan_str = "NA"
+                            wall_str = "NA"
+                        else:
+                            makespan_val = st["makespan"]
+                            makespan_str = (
+                                makespan_val
+                                if makespan_val != float("inf")
+                                else "inf"
+                            )
+                            runtime_str = f"{st['runtime']:.3f}"
+                            wall_str = f"{st['wall_time_s']:.3f}"
+
+                        row += [runtime_str, makespan_str, wall_str]
 
                     csv_rows.append(row)
 

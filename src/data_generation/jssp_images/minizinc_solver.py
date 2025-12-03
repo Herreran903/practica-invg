@@ -40,40 +40,35 @@ def filter_solver_candidates(
     mip_model_path: Optional[str],
 ) -> List[Tuple[str, str, str, Dict[str, Any]]]:
     """
-    Filter solver candidates based on availability and model requirements.
-
-    Args:
-        solver_candidates: List of (solver_id, key, type, options) tuples
-        mip_model_path: Path to MIP model (None if not available)
-
-    Returns:
-        Filtered list of usable solver configurations
-
-    Raises:
-        RuntimeError: If no usable solvers are found
+    Build solver configuration list, keeping all configured solvers that are
+    compatible with the available models.
+ 
+    Unlike an aggressive availability filter, this function does NOT drop
+    solvers just because they are not currently registered in the MiniZinc
+    driver. This allows the downstream pipeline to:
+      - keep a stable CSV schema (columns for all configured solvers), and
+      - gracefully handle missing / unlicensed solvers at execution time.
+ 
+    MIP solvers are still skipped if no MIP model path is provided.
     """
-    available = set(list_available_solvers())
     configs: List[Tuple[str, str, str, Dict[str, Any]]] = []
-
+ 
     for solver_id, key, solver_type, opts in solver_candidates:
-        # Skip if solver not installed
-        if solver_id not in available:
-            continue
-
         # Skip MIP solvers if no MIP model provided
         if solver_type == "mip" and not mip_model_path:
             continue
-
+ 
         configs.append((solver_id, key, solver_type, opts))
-
+ 
     if not configs:
         raise RuntimeError(
-            "No usable solvers found. Please check:\n"
-            "1. MiniZinc is installed and in PATH\n"
-            "2. At least one solver is installed\n"
-            "3. MIP model path is provided if using MIP solvers"
+            "No usable solver configurations. "
+            "Check that at least one solver candidate is configured with a "
+            "compatible model (cp_model / mip_model)."
         )
-
+ 
+    # NOTE: availability of each solver_id is checked lazily by the hybrid
+    # solver execution layer (Python API first, then subprocess fallback).
     return configs
 
 
@@ -174,65 +169,150 @@ def parse_minizinc_output(output_text: str, time_limit_s: float) -> Dict[str, An
     return stats
 
 
-def execute_minizinc_solver(
+def _solve_with_python_api(
+    solver_id: str,
+    key: str,
+    solver_type: str,
+    dzn_path: str,
+    time_limit_ms: int,
+    patched_model: str,
+    time_limit_s: float,
+) -> Optional[Dict[str, Any]]:
+    """
+    Try to solve a MiniZinc instance using the official Python minizinc package.
+ 
+    Returns a stats dict compatible with the subprocess-based path, or None if
+    the Python API is not available or the requested solver cannot be used.
+    """
+    # Diagnostic: make it explicit when we really try the Python API path
+    print(f"    [MiniZinc-Python] Trying solver='{solver_id}' (key='{key}')")
+    try:
+        import minizinc as _minizinc  # type: ignore
+        from datetime import timedelta
+    except Exception as e:
+        # Python API not installed or import failed → caller will use subprocess
+        print(
+            f"    [MiniZinc-Python] Import failed for solver='{solver_id}' "
+            f"(key='{key}'): {e}. Falling back to CLI."
+        )
+        return None
+ 
+    try:
+        solver = _minizinc.Solver.lookup(solver_id)
+    except Exception as e:
+        # Solver not registered in this MiniZinc driver → fallback to CLI
+        print(
+            f"    [MiniZinc-Python] Solver.lookup('{solver_id}') failed "
+            f"(key='{key}'): {e}. Falling back to CLI."
+        )
+        return None
+ 
+    try:
+        model = _minizinc.Model(patched_model)
+        # Attach data file (.dzn) to the model; if this fails we will fall back
+        # to the subprocess-based execution.
+        try:
+            model.add_file(dzn_path)
+        except Exception as e:
+            print(
+                f"    [MiniZinc-Python] model.add_file('{dzn_path}') failed "
+                f"for solver='{solver_id}' (key='{key}'): {e}. Falling back to CLI."
+            )
+            return None
+ 
+        instance = _minizinc.Instance(solver, model)
+ 
+        timeout_td = timedelta(milliseconds=time_limit_ms)
+        wall_start = time.time()
+        result = instance.solve(timeout=timeout_td)
+        wall_time = time.time() - wall_start
+    except Exception as e:
+        # Any error in the Python API path → signal caller to fall back
+        print(
+            f"    [MiniZinc-Python] solve() failed for solver='{solver_id}' "
+            f"(key='{key}'): {e}. Falling back to CLI."
+        )
+        return None
+ 
+    # Extract statistics
+    stats: Dict[str, Any] = {
+        "makespan": float("inf"),
+        "runtime": time_limit_s,
+        "had_time_tag": False,
+        "solved_binary": 0,
+    }
+ 
+    # Runtime from statistics (if available)
+    try:
+        solve_time = None
+        if hasattr(result, "statistics"):
+            solve_time = result.statistics.get(
+                "solveTime", result.statistics.get("time", None)
+            )
+        if solve_time is not None:
+            stats["runtime"] = float(solve_time)
+            stats["had_time_tag"] = True
+        else:
+            stats["runtime"] = min(time_limit_s, wall_time)
+    except Exception:
+        stats["runtime"] = min(time_limit_s, wall_time)
+ 
+    # Makespan / objective
+    try:
+        obj = getattr(result, "objective", None)
+        if obj is not None:
+            stats["makespan"] = float(obj)
+        elif hasattr(result, "__contains__"):
+            for name in ("END_MAKESPAN", "END", "makespan"):
+                if name in result:
+                    stats["makespan"] = float(result[name])
+                    break
+    except Exception:
+        # Keep default makespan = inf
+        pass
+ 
+    # Solved flag
+    try:
+        status = getattr(result, "status", None)
+        has_solution = False
+        if status is not None:
+            has_solution = bool(
+                getattr(status, "has_solution", lambda: False)()  # type: ignore
+            )
+        stats["solved_binary"] = 1 if has_solution else 0
+    except Exception:
+        stats["solved_binary"] = 0
+ 
+    # Attach common metadata
+    stats.update(
+        {
+            "solver": solver_id,
+            "key": key,
+            "type": solver_type,
+            "time_limit_s": time_limit_s,
+            "wall_time_s": wall_time,
+            "returncode": 0,
+        }
+    )
+    return stats
+ 
+ 
+def _solve_with_subprocess(
     solver_id: str,
     key: str,
     solver_type: str,
     options: Dict[str, Any],
     dzn_path: str,
     time_limit_ms: int,
-    cp_model_path: str,
-    mip_model_path: Optional[str],
-    temp_dir: str,
+    patched_model: str,
+    time_limit_s: float,
 ) -> Dict[str, Any]:
     """
-    Execute a MiniZinc solver on a JSSP instance.
-
-    Args:
-        solver_id: MiniZinc solver identifier (e.g., "gecode", "cplex")
-        key: Unique key for this solver configuration
-        solver_type: "cp" or "mip"
-        options: Solver options dict (strategy, supports_seed, inject_search)
-        dzn_path: Path to instance .dzn file
-        time_limit_ms: Time limit in milliseconds
-        cp_model_path: Path to CP model .mzn file
-        mip_model_path: Path to MIP model .mzn file (or None)
-        temp_dir: Directory for temporary files
-
-    Returns:
-        Dictionary with solver statistics and metadata
+    Fallback path: execute MiniZinc via subprocess using the CLI driver.
     """
-    time_limit_s = time_limit_ms / 1000.0
-    is_cp = solver_type == "cp"
-    inject = bool(options.get("inject_search", False))
-    strategy = options.get("strategy")
-
-    # Select appropriate model
-    model_path = cp_model_path if is_cp else mip_model_path
-    if not model_path or not os.path.exists(model_path):
-        return {
-            "makespan": float("inf"),
-            "runtime": time_limit_s,
-            "wall_time_s": 0.0,
-            "solved_binary": 0,
-            "had_time_tag": False,
-            "solver": solver_id,
-            "key": key,
-            "type": solver_type,
-            "time_limit_s": time_limit_s,
-            "returncode": -1,
-        }
-
-    # Create patched model if needed
-    os.makedirs(temp_dir, exist_ok=True)
-    temp_model = os.path.join(temp_dir, f"__tmp_{key}_T{time_limit_ms}.mzn")
-    patched_model = patch_model_with_search_strategy(
-        model_path, inject and is_cp, strategy, temp_model
-    )
-
     # Build command with solver-specific options
     extra_args: List[str] = []
-
+ 
     # Handle solver-specific DLL paths (macOS examples)
     if solver_id == "cplex":
         dll = os.environ.get("CPLEX_DLL") or os.path.join(
@@ -244,14 +324,14 @@ def execute_minizinc_solver(
         )
         if os.path.exists(dll):
             extra_args += ["--cplex-dll", dll]
-
+ 
     elif solver_id == "highs":
         dll = (
             os.environ.get("HIGHS_DLL") or "/opt/homebrew/opt/highs/lib/libhighs.dylib"
         )
         if os.path.exists(dll):
             extra_args += ["--highs-dll", dll]
-
+ 
     # Build full command
     cmd = [
         "minizinc",
@@ -263,11 +343,11 @@ def execute_minizinc_solver(
         patched_model,
         dzn_path,
     ]
-
+ 
     # Insert extra args after minizinc but before --solver
     if extra_args:
         cmd[1:1] = extra_args
-
+ 
     # Execute solver
     wall_start = time.time()
     try:
@@ -280,32 +360,26 @@ def execute_minizinc_solver(
         stdout = proc.stdout
         stderr = proc.stderr
         returncode = proc.returncode
-
+ 
     except subprocess.TimeoutExpired:
         stdout = f"%%%mzn-stat: solveTime={time_limit_s}\n"
         stderr = "Timeout expired"
         returncode = 124
-
+ 
     except FileNotFoundError:
         raise RuntimeError(
             "MiniZinc not found in PATH. Please install MiniZinc and ensure it's accessible."
         )
-
-    finally:
-        wall_time = time.time() - wall_start
-        # Clean up temporary model file
-        try:
-            os.unlink(patched_model)
-        except Exception:
-            pass
-
+ 
+    wall_time = time.time() - wall_start
+ 
     # Parse output
     stats = parse_minizinc_output(stdout, time_limit_s)
-
+ 
     # If no explicit time tag, use wall time as fallback
     if not stats.get("had_time_tag", False):
         stats["runtime"] = min(stats.get("runtime", time_limit_s), wall_time)
-
+ 
     # Add metadata
     stats.update(
         {
@@ -317,7 +391,7 @@ def execute_minizinc_solver(
             "returncode": returncode,
         }
     )
-
+ 
     # Log warnings for non-zero return codes
     if returncode != 0:
         err_snippet = (stderr or "").strip().splitlines()
@@ -327,7 +401,94 @@ def execute_minizinc_solver(
             f"had_time_tag={stats['had_time_tag']}, "
             f"stderr='{err_snippet}'"
         )
-
+ 
+    return stats
+ 
+ 
+def execute_minizinc_solver(
+    solver_id: str,
+    key: str,
+    solver_type: str,
+    options: Dict[str, Any],
+    dzn_path: str,
+    time_limit_ms: int,
+    cp_model_path: str,
+    mip_model_path: Optional[str],
+    temp_dir: str,
+) -> Dict[str, Any]:
+    """
+    Execute a MiniZinc solver on a JSSP instance using a hybrid strategy:
+ 
+    1. First try the official Python minizinc library (if installed and the
+       requested solver is registered).
+    2. If that fails for any reason (missing package, solver not registered,
+       runtime error...), automatically fall back to invoking the MiniZinc
+       CLI via subprocess.
+ 
+    The returned stats dictionary is compatible with the previous
+    subprocess-only implementation so that the rest of the pipeline (CSV
+    construction, training, etc.) does not need to know which backend was used.
+    """
+    time_limit_s = time_limit_ms / 1000.0
+    is_cp = solver_type == "cp"
+    inject = bool(options.get("inject_search", False))
+    strategy = options.get("strategy")
+ 
+    # Select appropriate model
+    model_path = cp_model_path if is_cp else mip_model_path
+    if not model_path or not os.path.exists(model_path):
+        # Model missing → treat as an unavailable solver for this run.
+        return {
+            "makespan": float("inf"),
+            "runtime": time_limit_s,
+            "wall_time_s": 0.0,
+            "solved_binary": 0,
+            "had_time_tag": False,
+            "solver": solver_id,
+            "key": key,
+            "type": solver_type,
+            "time_limit_s": time_limit_s,
+            "returncode": -1,
+        }
+ 
+    # Create patched model if needed
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_model = os.path.join(temp_dir, f"__tmp_{key}_T{time_limit_ms}.mzn")
+    patched_model = patch_model_with_search_strategy(
+        model_path, inject and is_cp, strategy, temp_model
+    )
+ 
+    try:
+        # 1) Try Python API first
+        stats = _solve_with_python_api(
+            solver_id=solver_id,
+            key=key,
+            solver_type=solver_type,
+            dzn_path=dzn_path,
+            time_limit_ms=time_limit_ms,
+            patched_model=patched_model,
+            time_limit_s=time_limit_s,
+        )
+ 
+        # 2) Fallback to subprocess if Python API is unavailable or fails
+        if stats is None:
+            stats = _solve_with_subprocess(
+                solver_id=solver_id,
+                key=key,
+                solver_type=solver_type,
+                options=options,
+                dzn_path=dzn_path,
+                time_limit_ms=time_limit_ms,
+                patched_model=patched_model,
+                time_limit_s=time_limit_s,
+            )
+    finally:
+        # Clean up temporary model file
+        try:
+            os.unlink(patched_model)
+        except Exception:
+            pass
+ 
     return stats
 
 
