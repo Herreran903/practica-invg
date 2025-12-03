@@ -24,20 +24,22 @@ data:
 
 model:
   # CNN architecture for 128x128x1 input
-  # Filters for each Conv2D layer (three Conv2D+MaxPool+Dropout blocks)
-  conv_filters: [16, 32, 64]
+  # For SAT we follow the paper: 3 Conv2D+MaxPool+Dropout blocks with filters 32, 64, 128.
+  conv_filters: [32, 64, 128]
   
-  # Kernel size for Conv2D layers
-  conv_kernel_size: 3
-  
+  # Kernel sizes for Conv2D layers (per block): [3, 2, 2] as in the paper
+  conv_kernel_size: [3, 2, 2]
+   
   # Pool size for MaxPooling2D layers
   pool_size: 2
   
-  # Dropout rate after convolutions (applied after each block)
-  dropout_conv: 0.25
+  # Dropout rates after convolutions (one rate per block, paper setting)
+  # Block 1: 0.1, Block 2: 0.2, Block 3: 0.3
+  dropout_conv: [0.1, 0.2, 0.3]
   
   # Number of units in dense layers (two Dense layers with Dropout in between)
-  dense_units: 256
+  # Paper setting: first Dense with 1000 units, second Dense with 200 units.
+  dense_units: [1000, 200]
   
   # Dropout rate after first dense layer
   dropout_dense: 0.5
@@ -123,12 +125,3 @@ tasks:
     compute_resolved_rate: true
     compute_ast: true
     
-  regression:
-    description: "Predict runtime for each solver"
-    output_activation: "linear"
-    loss: "mae"
-    metrics: ["mae"]
-    nan_penalty_multiplier: 10.0  # Multiply time_limit by this for NaN runtimes
-    # Regression doesn't compute resolved_rate/AST
-    compute_resolved_rate: false
-    compute_ast: false

@@ -52,7 +52,7 @@ Examples:
         "--task",
         type=str,
         required=True,
-        choices=["classification", "multilabel", "regression"],
+        choices=["classification", "multilabel"],
     )
     parser.add_argument(
         "--config", type=str, default="src/training/sat_images/config.yaml"

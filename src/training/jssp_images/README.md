@@ -8,7 +8,9 @@ The module supports two main training tasks via the CLI:
 - **Classification**: Select the single best solver for each instance
 - **Multilabel**: Identify all viable solvers (runtime < time limit)
 
-Internally, it also includes utilities for **regression** (predicting runtime for each solver) that can be used via the Python API, but regression is not exposed as a CLI task.
+Internally, there are evaluation utilities that are also reused by other modules
+(e.g., tensors), but the **JSSP image pipeline** itself only supports
+**classification** and **multilabel**, not regression.
 
 ## Module Structure
 
@@ -137,11 +139,12 @@ data:
 ### Model Architecture
 ```yaml
 model:
-  conv_filters: [16, 32, 64]
-  conv_kernel_size: 3
+  # CNN that replicates the architecture from the paper (shared with SAT images)
+  conv_filters: [32, 64, 128]
+  conv_kernel_size: [3, 2, 2]   # per-block kernels: 3x3, 2x2, 2x2
   pool_size: 2
-  dropout_conv: 0.25
-  dense_units: 256
+  dropout_conv: [0.1, 0.2, 0.3] # per-block dropout rates
+  dense_units: [1000, 200]      # two dense layers: 1000 and 200 units
   dropout_dense: 0.5
 ```
 
@@ -251,10 +254,6 @@ additionally reports aggregated resolved-rate statistics across folds:
 - Average Precision per label
 - Micro and macro F1 scores
 
-### Regression
-- Scatter plots (predicted vs actual) per solver
-- MAE per solver
-- Overall MAE across all solvers
 
 ## Using as a Python Module
 

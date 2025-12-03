@@ -25,28 +25,17 @@ data:
 
 model:
   # CNN architecture for 128x128x1 input
-  architecture:
-    conv_layers:
-      - filters: 16
-        kernel_size: 3
-        activation: "relu"
-        pooling: true
-      - filters: 32
-        kernel_size: 3
-        activation: "relu"
-        pooling: true
-      - filters: 64
-        kernel_size: 3
-        activation: "relu"
-        pooling: true
-    
-    dropout_conv: 0.25
-    
-    dense_layers:
-      - units: 256
-        activation: "relu"
-    
-    dropout_dense: 0.5
+  # To match the Loreggia et al. paper (and SAT images), we use:
+  # - 3 Conv2D + MaxPool + Dropout blocks with filters [32, 64, 128]
+  # - Kernel sizes [3, 2, 2] for the three conv blocks
+  # - Dropout rates [0.1, 0.2, 0.3] after each conv block
+  # - Two Dense layers [1000, 200] with Dropout 0.5 after the first Dense.
+  conv_filters: [32, 64, 128]
+  conv_kernel_size: [3, 2, 2]
+  pool_size: 2
+  dropout_conv: [0.1, 0.2, 0.3]
+  dense_units: [1000, 200]
+  dropout_dense: 0.5
   
   # Optimizer hyperparameters (SGD with Nesterov momentum, as in the paper)
   learning_rate: 0.03
@@ -123,16 +112,3 @@ multilabel:
     - "pr_curves"
     - "f1_bars"
     - "ap_per_label"
-
-regression:
-  # Imputation value for NaN runtimes (multiplier of time_limit_s)
-  nan_imputation_multiplier: 10.0
-  
-  # Metrics to compute
-  metrics:
-    - "mae"
-  
-  # Visualizations to generate
-  plots:
-    - "scatter_per_solver"
-    - "mae_per_solver"

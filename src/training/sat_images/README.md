@@ -58,8 +58,10 @@ sat:
 
 ## Architecture and training details (paper configuration)
 
-The SAT image CNN **reuses exactly the same architecture and optimizer** as the
-JSSP images model, and the training code is shared between both modules.
+The SAT image CNN uses the **paper-specific architecture and optimizer
+configuration** described in Loreggia et al. (2016). The training loop is
+shared with JSSP, but SAT overrides the architecture hyperparameters via
+[`config.yaml`](src/training/sat_images/config.yaml:25) to match the paper.
 
 1. **Input**
    - 128×128×1 grayscale images loaded from `.npy` files.
@@ -68,49 +70,60 @@ JSSP images model, and the training code is shared between both modules.
 
 2. **Convolutional blocks**
    Implemented in [`build_cnn`](src/training/jssp_images/model_builder.py:18):
-
+ 
    - 3 consecutive blocks, each of the form:
-     - `Conv2D(filters, kernel_size=3, padding="same", activation="relu")`
+     - `Conv2D(filters, kernel_size=k_i, padding="same", activation="relu")`
      - `MaxPooling2D(pool_size=2)`
-     - `Dropout(rate=0.25)`
-   - Default filters per block:
-     - Block 1: 16 filters
-     - Block 2: 32 filters
-     - Block 3: 64 filters
+     - `Dropout(rate)` with a **block-specific** rate.
+   - Paper-aligned filters, kernel sizes and dropout rates per block for SAT:
+     - Block 1: 32 filters, kernel 3×3, `Dropout(0.1)`
+     - Block 2: 64 filters, kernel 2×2, `Dropout(0.2)`
+     - Block 3: 128 filters, kernel 2×2, `Dropout(0.3)`
+   - These values are configured in:
+     - `model.conv_filters: [32, 64, 128]`
+     - `model.conv_kernel_size: [3, 2, 2]`
+     - `model.dropout_conv: [0.1, 0.2, 0.3]`
+     inside [`sat_images/config.yaml`](src/training/sat_images/config.yaml:25).
 
 3. **Dense part**
-   - `Flatten`
-   - `Dense(256, activation="relu")`
-   - `Dropout(rate=0.5)`
-   - `Dense(256, activation="relu")`
+  - `Flatten`
+  - `Dense(1000, activation="relu")`
+  - `Dropout(rate=0.5)`
+  - `Dense(200, activation="relu")`
+
+  These sizes correspond to:
+  - `model.dense_units: [1000, 200]` in
+    [`sat_images/config.yaml`](src/training/sat_images/config.yaml:25).
 
 4. **Output layer**
-   - For **multilabel experiments in the paper** (recommended setting):
-     - `Dense(C, activation="sigmoid")` for C solvers.
-   - Classification and regression remain available in
-     [`build_cnn`](src/training/jssp_images/model_builder.py:18) for ablations:
-     - Classification: `softmax` output.
-     - Regression: `linear` output.
+   - For the **multilabel experiments in the paper** (recommended configuration):
+     - `Dense(C, activation="sigmoid")` for C solvers, i.e., an independent
+       binary output (capable / not capable) per solver.
+   - Classification is also available in
+     [`build_cnn`](src/training/jssp_images/model_builder.py:18) for additional
+     experiments (softmax output).
+     Regression **is not supported** in the SAT image pipeline.
 
 5. **Optimizer and schedule**
-   - Optimizer: `SGD` with **Nesterov momentum**, configured via
-     [`config.yaml`](src/training/sat_images/config.yaml:25):
-     - Initial learning rate: **0.03**
-     - Initial momentum: **0.9**
-   - Per-epoch linear schedule (implemented once in the shared JSSP training
-     loop via [`SGDLearningRateMomentumScheduler`](src/training/jssp_images/training_loop.py:25),
-     which SAT reuses):
-     - `learning_rate ← max(0, learning_rate − 0.003)`
-     - `momentum     ← min(0.99, momentum + 0.001)`
+  - Optimizer: `SGD` with **Nesterov momentum**, configured in
+    [`config.yaml`](src/training/sat_images/config.yaml:25):
+    - Initial learning rate: **0.03**
+    - Initial momentum: **0.9**
+  - Linear per-epoch schedule (implemented once in the shared training loop
+    via [`SGDLearningRateMomentumScheduler`](src/training/jssp_images/training_loop.py:25),
+    which SAT reuses):
+    - `learning_rate ← max(0, learning_rate − 0.003)`
+    - `momentum     ← min(0.99, momentum + 0.001)`
 
 6. **Batch size and epochs**
-   - Batch size: **128** (paper setting; see
-     [`training.batch_size`](src/training/sat_images/config.yaml:45)).
-   - Epochs: 25 (with EarlyStopping on `val_loss` and patience 6).
+  - Batch size: **128** (paper setting; see
+    [`training.batch_size`](src/training/sat_images/config.yaml:45)).
+  - Epochs: 25 (with EarlyStopping on `val_loss` and patience 6).
 
 This configuration is the **default** when using the provided
-[`config.yaml`](src/training/sat_images/config.yaml:1) and replicates exactly
-the CNN, optimizer, activations, dropout, and training strategy used in the paper.
+[`config.yaml`](src/training/sat_images/config.yaml:1) and it replicates
+the CNN, optimizer, activations, dropout, and training strategy described
+in the paper for the SAT domain.
 
 ## SAT-Specific Metrics
 
@@ -173,24 +186,20 @@ the resolved-rate across folds:
 
 ### Standard
 - `--csv`: Path to CSV file
-- `--task`: classification | multilabel | regression
+- `--task`: classification | multilabel
 - `--epochs`, `--batch_size`, `--folds`, etc.
 
 ## Metrics by Task
-
+ 
 ### Classification
 - Accuracy, F1-macro
 - **resolved_rate**: % instances resolved
 - **AST**: Average solving time
-
+ 
 ### Multilabel
 - F1-micro, F1-macro, AP per label
 - **resolved_rate**: % instances with ≥1 viable solver
 - **AST**: Average time using best predicted solver
-
-### Regression
-- MAE (overall and per solver)
-- No resolved_rate/AST
 
 ## Example: 5x5 Cross-Validation
 
