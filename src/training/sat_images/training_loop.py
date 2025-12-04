@@ -192,14 +192,18 @@ def _run_single_kfold(
         splitter = KFold(n_splits=folds, shuffle=True, random_state=seed)
         splits = splitter.split(df)
 
-    # Get solver names
+    # Get solver names and runtime columns.
+    # For SAT-specific metrics that depend on runtimes (resolved_rate, AST, etc.),
+    # we must always use *_Runtime_s columns, even if the model was trained
+    # using scores for solver selection.
     cols_for_names = (
         solver_cols["score"]
         if (use_score and solver_cols["score"])
         else solver_cols["runtime"]
     )
+    runtime_cols = solver_cols["runtime"]
     solver_names = [
-        c.replace("_Runtime_s", "").replace("_Score_S_rel", "") for c in cols_for_names
+        c.replace("_Runtime_s", "").replace("_Score_S_rel", "") for c in runtime_cols
     ]
 
     fold_results = []
@@ -223,8 +227,9 @@ def _run_single_kfold(
             y_val_true = build_labels(val_df, solver_cols, task, use_score, time_limit)
             y_bss = np.full_like(y_val_true, bss_idx_i)
             bss_metric = accuracy_score(y_val_true, y_bss)
+            # AST must be computed using true runtimes, not scores
             bss_ast = compute_ast_bss(
-                val_df, cols_for_names, bss_idx_i, feat_time_col, time_limit
+                val_df, runtime_cols, bss_idx_i, feat_time_col, time_limit
             )
             print(
                 f"\n[FOLD {i}] BSS={bss_col} | BSS_acc={bss_metric:.4f} | BSS_AST={bss_ast:.1f}s"
@@ -287,7 +292,8 @@ def _run_single_kfold(
             fold_dir=fold_dir,
             fold_idx=i,
             val_df=val_df,
-            solver_runtime_cols=cols_for_names,
+            # For resolved_rate and AST we always use runtime columns.
+            solver_runtime_cols=runtime_cols,
             config=config,
         )
 

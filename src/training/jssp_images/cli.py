@@ -239,6 +239,10 @@ def main():
     if getattr(args, "time_limit", None) is not None:
         config.setdefault("data", {})["time_limit_s"] = args.time_limit
 
+    # Override output parent directory if provided via CLI
+    if getattr(args, "out_parent", None):
+        config.setdefault("output", {})["parent_dir"] = args.out_parent
+
     config = resolve_paths(config)
 
     # Setup reproducibility
@@ -262,8 +266,11 @@ def main():
 
     # Normalize and filter image paths
     print("\nNormalizing image paths...")
-    df = normalize_image_paths(df, "Image_Npy_Path")
- 
+    # Paths in the CSV are assumed to be relative to the current working
+    # directory (project root). normalize_image_paths() expects only the
+    # DataFrame; the second argument is a project root, not a column name.
+    df = normalize_image_paths(df)
+
     print("Filtering valid images...")
     df, missing_count, _total_rows = filter_valid_images(df)
 
@@ -320,6 +327,11 @@ def main():
 
     # Print training configuration
     training_cfg = config.get("training", {})
+    early_cfg = training_cfg.get("early_stopping", {}) or {}
+    early_patience = training_cfg.get(
+        "early_stopping_patience", early_cfg.get("patience", 6)
+    )
+
     print(f"\n{'='*60}")
     print("TRAINING CONFIGURATION")
     print(f"{'='*60}")
@@ -329,7 +341,7 @@ def main():
     print(f"Batch size: {training_cfg.get('batch_size', 64)}")
     print(f"K-Folds: {training_cfg.get('k_folds', 5)}")
     print(f"Learning rate: {training_cfg.get('learning_rate', 1e-3)}")
-    print(f"Early stopping patience: {training_cfg.get('early_stopping_patience', 6)}")
+    print(f"Early stopping patience: {early_patience}")
     print(f"{'='*60}\n")
 
     # Run K-Fold training

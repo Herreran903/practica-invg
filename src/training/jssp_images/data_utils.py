@@ -215,10 +215,17 @@ def make_dataset(
     # Derive target height/width if not explicitly provided
     if target_h is None or target_w is None:
         if config is not None:
+            # Support both schemas:
+            # - JSSP:   data.image.target_height / target_width
+            # - SAT:    data.target_height / target_width
             data_cfg = config.get("data", {})
-            image_cfg = data_cfg.get("image", {})
-            target_h = image_cfg.get("target_height", 128)
-            target_w = image_cfg.get("target_width", 128)
+            image_cfg = data_cfg.get("image", {}) or {}
+            target_h = image_cfg.get(
+                "target_height", data_cfg.get("target_height", 128)
+            )
+            target_w = image_cfg.get(
+                "target_width", data_cfg.get("target_width", 128)
+            )
         else:
             target_h = target_h or 128
             target_w = target_w or 128

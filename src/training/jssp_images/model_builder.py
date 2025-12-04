@@ -194,10 +194,14 @@ def build_model_from_config(
     """
     model_cfg = config.get("model", {})
     data_cfg = config.get("data", {})
-
-    # Extract input shape from data config
-    target_h = data_cfg.get("target_height", 128)
-    target_w = data_cfg.get("target_width", 128)
+ 
+    # Extract input shape from data config.
+    # Support both schemas:
+    # - JSSP: data.image.target_height / target_width
+    # - SAT:  data.target_height / target_width
+    image_cfg = data_cfg.get("image", {}) or {}
+    target_h = image_cfg.get("target_height", data_cfg.get("target_height", 128))
+    target_w = image_cfg.get("target_width", data_cfg.get("target_width", 128))
     input_shape = (target_h, target_w, 1)
 
     # Extract architecture parameters (kept for backward compatibility; defaults

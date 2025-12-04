@@ -137,6 +137,12 @@ def main():
         config.setdefault("data", {})["feat_time_column"] = args.feat_time_col
     if args.repeats is not None:
         config.setdefault("training", {})["k_fold_repeats"] = args.repeats
+    if args.out_parent is not None:
+        # Allow overriding output parent directory from CLI
+        config.setdefault("output", {})["parent_dir"] = args.out_parent
+    if args.run_name is not None:
+        # Allow overriding run name prefix from CLI
+        config.setdefault("output", {})["run_name"] = args.run_name
 
     config = resolve_paths(config)
 
@@ -157,7 +163,10 @@ def main():
         sys.exit(1)
 
     print("\nNormalizing image paths...")
-    df = normalize_image_paths(df, "Image_Npy_Path")
+    # Paths in the CSV are assumed to be relative to the current working
+    # directory (project root). normalize_image_paths() expects the DataFrame
+    # and an optional project_root, not the column name.
+    df = normalize_image_paths(df)
 
     print("Filtering valid images...")
     df, missing_count, _total_rows = filter_valid_images(df)

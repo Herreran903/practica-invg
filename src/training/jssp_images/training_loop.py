@@ -128,7 +128,11 @@ def train_fold(
 
     epochs = training_cfg.get("epochs", 25)
     batch_size = training_cfg.get("batch_size", 64)
-    patience = training_cfg.get("early_stopping_patience", 6)
+    # Support both flat and nested early-stopping configuration:
+    # - training.early_stopping_patience
+    # - training.early_stopping.patience
+    early_cfg = training_cfg.get("early_stopping", {}) or {}
+    patience = training_cfg.get("early_stopping_patience", early_cfg.get("patience", 6))
     lr_step = training_cfg.get("lr_step", 0.003)
     momentum_step = training_cfg.get("momentum_step", 0.001)
 
@@ -374,14 +378,12 @@ def run_kfold(
         splitter = KFold(n_splits=folds, shuffle=True, random_state=seed)
         splits = splitter.split(df)
 
-    # Get solver names for reporting
-    cols_for_names = (
-        solver_cols["score"]
-        if (use_score and solver_cols["score"])
-        else solver_cols["runtime"]
-    )
+    # Get solver names for reporting and runtime columns for portfolio simulation.
+    # For metrics that depend on runtimes (resolved_rate, etc.), we must always use
+    # *_Runtime_s columns, even when the model was trained using scores.
+    runtime_cols = solver_cols["runtime"]
     solver_names = [
-        c.replace("_Runtime_s", "").replace("_Score_S_rel", "") for c in cols_for_names
+        c.replace("_Runtime_s", "").replace("_Score_S_rel", "") for c in runtime_cols
     ]
 
     # Train and evaluate each fold
@@ -436,7 +438,7 @@ def run_kfold(
             fold_dir=fold_dir,
             fold_idx=i,
             val_df=val_df,
-            solver_runtime_cols=cols_for_names,
+            solver_runtime_cols=runtime_cols,
             config=config,
         )
 
