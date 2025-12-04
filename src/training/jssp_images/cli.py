@@ -121,6 +121,11 @@ Examples:
         help="Learning rate for Adam optimizer (overrides config)",
     )
     parser.add_argument(
+        "--time_limit",
+        type=float,
+        help="Time limit in seconds (overrides data.time_limit_s in config)",
+    )
+    parser.add_argument(
         "--out_parent",
         type=str,
         help="Parent directory for output (default: training/jssp/results/)",
@@ -229,6 +234,11 @@ def main():
     print(f"Loading configuration from: {args.config}")
     config = load_config(args.config)
     config = merge_cli_args(config, args)
+
+    # Apply CLI overrides not handled by merge_cli_args
+    if getattr(args, "time_limit", None) is not None:
+        config.setdefault("data", {})["time_limit_s"] = args.time_limit
+
     config = resolve_paths(config)
 
     # Setup reproducibility
