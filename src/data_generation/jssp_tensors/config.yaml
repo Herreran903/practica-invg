@@ -31,15 +31,6 @@ academic:
   
   time_limit_ms: 60000  # 60 seconds
   penalty_factor_k: 10.0
-  
-  # Solver strategies for academic mode
-  solver_strategies:
-    - solver: "gecode"
-      strategy: "default"
-      key: "GECODE_DEFAULT"
-    - solver: "chuffed"
-      strategy: "default"
-      key: "CHUFFED_DEFAULT"
 
 # Generated mode configuration (random instances)
 generated:
@@ -67,71 +58,47 @@ generated:
     duration_range: [1, 20]  # Min and max duration for operations
     seed: 42  # Seed for the instance generator
 
-# Solver candidates for generated mode
-# Format: (solver_id, key_identifier, type, options)
+# Solver candidates for both academic and generated modes
+# Each entry selects a MiniZinc solver with its default internal configuration.
 solver_candidates:
-  # CP Solvers
+  # CP Solvers (default strategies, no custom search heuristics)
   - solver_id: "gecode"
     key: "GECODE_FF"
     type: "cp"
-    options:
-      strategy: "first_fail"
-      supports_seed: true
-      inject_search: true
-  
+    options: {}
+
   - solver_id: "chuffed"
     key: "CHUFFED_IO"
     type: "cp"
-    options:
-      strategy: "input_order"
-      supports_seed: true
-      inject_search: true
-  
+    options: {}
+
   - solver_id: "cp-sat"
     key: "CPSAT_FF"
     type: "cp"
-    options:
-      strategy: "first_fail"
-      supports_seed: true
-      inject_search: true
-  
-  # MIP Solvers
+    options: {}
+
+  # MIP Solvers (no extra options; rely on solver defaults)
   - solver_id: "coin-bc"
     key: "CBC_DEF"
     type: "mip"
-    options:
-      strategy: null
-      supports_seed: false
-      inject_search: false
-  
+    options: {}
+
   - solver_id: "scip"
     key: "SCIP_DEF"
     type: "mip"
-    options:
-      strategy: null
-      supports_seed: false
-      inject_search: false
-  
+    options: {}
+
   - solver_id: "highs"
     key: "HIGHS_DEF"
     type: "mip"
-    options:
-      strategy: null
-      supports_seed: false
-      inject_search: false
-  
+    options: {}
+
   - solver_id: "cplex"
     key: "CPLEX_DEF"
     type: "mip"
-    options:
-      strategy: null
-      supports_seed: false
-      inject_search: false
-  
+    options: {}
+
   - solver_id: "gurobi"
     key: "GUROBI_DEF"
     type: "mip"
-    options:
-      strategy: null
-      supports_seed: false
-      inject_search: false
+    options: {}

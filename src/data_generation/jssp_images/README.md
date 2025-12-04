@@ -114,12 +114,8 @@ image:
 ```yaml
 academic:
   instances: ["ft06", "ft10", "la01", "abz5"]
-  time_limit_ms: 60000
+  time_limit_ms: 180000
   penalty_factor_k: 10.0
-  solver_strategies:
-    - solver: "gecode"
-      strategy: "default"
-      key: "GECODE_DEFAULT"
 ```
 
 ### Generated Mode
@@ -391,10 +387,7 @@ solver_candidates:
   - solver_id: "your-solver"
     key: "YOUR_SOLVER_KEY"
     type: "cp"  # or "mip"
-    options:
-      strategy: "first_fail"  # for CP solvers
-      supports_seed: true
-      inject_search: true
+    options: {}  # use the solver's default configuration (no custom heuristics)
 ```
 
 ### Changing Instance Sizes

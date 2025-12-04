@@ -154,16 +154,6 @@ class JSPPTensorsConfig:
         """Get penalty factor K for academic mode scoring."""
         return self.config["academic"]["penalty_factor_k"]
 
-    @property
-    def academic_solver_strategies(self) -> List[Tuple[str, str, str]]:
-        """
-        Get solver strategies for academic mode.
-
-        Returns:
-            List of tuples (solver_id, strategy_label, key_identifier)
-        """
-        strategies = self.config["academic"]["solver_strategies"]
-        return [(s["solver"], s["strategy"], s["key"]) for s in strategies]
 
     # Generated mode configuration
     @property

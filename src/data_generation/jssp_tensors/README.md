@@ -310,10 +310,7 @@ solver_candidates:
   - solver_id: "your-solver"
     key: "YOUR_SOLVER_KEY"
     type: "cp"  # or "mip"
-    options:
-      strategy: "first_fail"  # for CP solvers
-      supports_seed: true
-      inject_search: true
+    options: {}  # use the solver's default configuration (no custom heuristics)
 ```
 
 ### Changing Instance Sizes

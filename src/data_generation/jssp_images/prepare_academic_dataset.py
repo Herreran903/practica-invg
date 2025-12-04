@@ -20,6 +20,7 @@ from .jssp_instance_utils import (
 from .minizinc_solver import (
     calculate_relative_performance_score,
     execute_minizinc_solver,
+    filter_solver_candidates,
 )
 
 
@@ -46,10 +47,11 @@ def prepare_academic_dataset(config: JSPPImagesConfig) -> str:
     output_dir = config.academic_output_dir
     csv_name = config.academic_csv_name
     instance_names = config.academic_instances
-    model_path = config.cp_model_path
+    cp_model_path = config.cp_model_path
+    mip_model_path = config.mip_model_path
     time_limit_ms = config.academic_time_limit_ms
     penalty_factor = config.academic_penalty_factor
-    solver_strategies = config.academic_solver_strategies
+    solver_candidates = config.solver_candidates
 
     os.makedirs(output_dir, exist_ok=True)
     time_limit_s = time_limit_ms / 1000.0
@@ -63,8 +65,13 @@ def prepare_academic_dataset(config: JSPPImagesConfig) -> str:
     print(f"Output directory: {output_dir}")
     print("-" * 75)
 
+    # Configure solvers (shared with generated mode)
+    solver_configs = filter_solver_candidates(solver_candidates, mip_model_path)
+    solver_keys = [key for _, key, _, _ in solver_configs]
+    print(f"Solvers: {', '.join(solver_keys)}")
+    print("-" * 75)
+
     # Prepare CSV header
-    solver_keys = [key for _, _, key in solver_strategies]
     header = [
         "Instance_Name",
         "Raw_Text_Path",
@@ -108,19 +115,19 @@ def prepare_academic_dataset(config: JSPPImagesConfig) -> str:
             all_results: Dict[str, Dict] = {}
             best_makespan = float("inf")
 
-            for solver_id, strategy, key in solver_strategies:
+            for solver_id, key, solver_type, opts in solver_configs:
                 print(f"\n  Solver: {key}")
 
-                # Execute solver
+                # Execute solver (shared configuration with generated mode)
                 stats = execute_minizinc_solver(
                     solver_id=solver_id,
                     key=key,
-                    solver_type="cp",  # Academic mode uses CP solvers
-                    options={"strategy": strategy, "inject_search": False},
+                    solver_type=solver_type,
+                    options=opts,
                     dzn_path=dzn_path,
                     time_limit_ms=time_limit_ms,
-                    cp_model_path=model_path,
-                    mip_model_path=None,
+                    cp_model_path=cp_model_path,
+                    mip_model_path=mip_model_path,
                     temp_dir=os.path.join(output_dir, "temp"),
                 )
 
