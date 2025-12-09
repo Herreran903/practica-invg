@@ -18,6 +18,7 @@ def build_cnn(
     conv_filters: list[int] = [32, 64, 128],
     conv_kernel_size: int = 3,
     pool_size: int = 2,
+    dropout_conv: float = 0.25,
     dropout_dense: float = 0.4,
     dense_units: int = 256,
     learning_rate: float = 1e-3,
@@ -25,19 +26,25 @@ def build_cnn(
     """
     Build and compile CNN for JSSP tensor inputs.
  
-    Architecture optimized for 10x10x2 inputs:
-    - Multiple Conv2D + MaxPooling2D blocks
-    - Flatten
-    - Dense layer with dropout
-    - Task-specific output layer
+    Architecture (CONVJSSP-inspired, no pooling):
+    - Alternating Conv2D and DepthwiseConv2D blocks
+      (Conv2D -> DepthwiseConv2D -> Conv2D -> DepthwiseConv2D -> ...)
+    - Spatial reduction (when needed) is performed via strides in the
+      depthwise convolutions instead of pooling (CONVJSSP philosophy).
+    - Dropout after convolutional blocks and dense layer for MC-dropout-based
+      uncertainty estimation.
+    - Task-specific output head:
+      * classification: softmax over solvers
+      * multilabel: sigmoid per solver
  
     Args:
         input_shape: Shape of input tensors (max_jobs, max_machines, n_channels).
         output_dim: Number of output units.
         task: Task type ('classification' or 'multilabel').
-        conv_filters: List of filter counts for Conv2D layers.
-        conv_kernel_size: Kernel size for convolutions.
-        pool_size: Pool size for MaxPooling2D.
+        conv_filters: List of filter counts for Conv2D blocks.
+        conv_kernel_size: Kernel size for Conv2D / DepthwiseConv2D.
+        pool_size: Kept for backward compatibility (ignored; no pooling used).
+        dropout_conv: Dropout rate applied after each depthwise block.
         dropout_dense: Dropout rate after dense layer.
         dense_units: Number of units in dense layer.
         learning_rate: Learning rate for Adam.
@@ -46,27 +53,59 @@ def build_cnn(
         Compiled Keras model.
     """
     if task not in ["classification", "multilabel"]:
-        raise ValueError(f"Invalid task '{task}' for jssp_tensors (only classification/multilabel supported)")
-
+        raise ValueError(
+            f"Invalid task '{task}' for jssp_tensors "
+            f"(only classification/multilabel supported)"
+        )
+ 
     inputs = tf.keras.Input(shape=input_shape, name="tensor_input")
     x = inputs
-
-    # Convolutional blocks
+ 
+    # Normalize convolutional dropout configuration to a per-block list
+    if isinstance(dropout_conv, (int, float)):
+        conv_dropout_rates = [float(dropout_conv)] * len(conv_filters)
+    else:
+        conv_dropout_rates = [float(r) for r in dropout_conv]
+        if len(conv_dropout_rates) < len(conv_filters):
+            conv_dropout_rates += [conv_dropout_rates[-1]] * (
+                len(conv_filters) - len(conv_dropout_rates)
+            )
+        elif len(conv_dropout_rates) > len(conv_filters):
+            conv_dropout_rates = conv_dropout_rates[: len(conv_filters)]
+ 
+    # Convolutional blocks: Conv2D followed by DepthwiseConv2D (no pooling).
+    # For early blocks we use stride=2 in the depthwise layer to reduce the
+    # spatial dimension; the last block keeps stride=1.
     for i, filters in enumerate(conv_filters):
+        # Standard Conv2D
         x = tf.keras.layers.Conv2D(
             filters,
             conv_kernel_size,
             padding="same",
             activation="relu",
-            name=f"conv_{i+1}",
+            name=f"conv_{2 * i + 1}",
         )(x)
-        x = tf.keras.layers.MaxPooling2D(pool_size, name=f"pool_{i+1}")(x)
-
+ 
+        # DepthwiseConv2D with optional downsampling
+        stride = 2 if i < len(conv_filters) - 1 else 1
+        x = tf.keras.layers.DepthwiseConv2D(
+            conv_kernel_size,
+            strides=stride,
+            padding="same",
+            activation="relu",
+            name=f"depthwise_conv_{2 * i + 2}",
+        )(x)
+ 
+        # Dropout for uncertainty estimation (Monte Carlo dropout)
+        x = tf.keras.layers.Dropout(
+            conv_dropout_rates[i], name=f"dropout_conv_{i+1}"
+        )(x)
+ 
     # Flatten and dense
     x = tf.keras.layers.Flatten(name="flatten")(x)
     x = tf.keras.layers.Dense(dense_units, activation="relu", name="dense")(x)
     x = tf.keras.layers.Dropout(dropout_dense, name="dropout_dense")(x)
-
+ 
     # Task-specific output
     if task == "classification":
         outputs = tf.keras.layers.Dense(
@@ -74,20 +113,20 @@ def build_cnn(
         )(x)
         loss = "sparse_categorical_crossentropy"
         metrics = ["accuracy"]
-    elif task == "multilabel":
+    else:  # multilabel
         outputs = tf.keras.layers.Dense(
             output_dim, activation="sigmoid", name="output_sigmoid"
         )(x)
         loss = "binary_crossentropy"
         metrics = [tf.keras.metrics.AUC(curve="PR", name="auc_pr")]
-
+ 
     model = tf.keras.Model(inputs=inputs, outputs=outputs, name=f"cnn_tensor_{task}")
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
         loss=loss,
         metrics=metrics,
     )
-
+ 
     return model
 
 

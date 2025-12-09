@@ -115,17 +115,17 @@ def build_labels(
 ) -> np.ndarray:
     """
     Generate label matrix/vector according to the task.
-
+ 
     Args:
         df: DataFrame with solver metrics
         solver_cols: Dictionary with 'runtime' and 'score' column lists
-        task: One of 'classification', 'multilabel', or 'regression'
-        use_score: Whether to use score columns for "best" solver
-        time_limit_s: Time limit for multilabel/regression tasks
-
+        task: One of 'classification' or 'multilabel'
+        use_score: Whether to use score columns for "best" solver (classification only)
+        time_limit_s: Time limit for multilabel task
+ 
     Returns:
-        Label array with shape [N] for classification or [N, C] for multi/regression
-
+        Label array with shape [N] for classification or [N, C] for multilabel
+ 
     Raises:
         ValueError: If task is not recognized
     """
@@ -135,23 +135,17 @@ def build_labels(
             idx, _ = argmin_runtime_or_score(r, solver_cols, use_score)
             y.append(idx)
         y = np.array(y, dtype=np.int32)
-
+ 
     elif task == "multilabel":
         rt_cols = solver_cols["runtime"]
         y = np.stack(
             [multilabel_targets(r, rt_cols, time_limit_s) for _, r in df.iterrows()],
             axis=0,
         )
-
-    elif task == "regression":
-        rt_cols = solver_cols["runtime"]
-        y = df[rt_cols].astype(float).values
-        # Impute NaN with large penalty (10x time limit)
-        y[~np.isfinite(y)] = time_limit_s * 10.0
-
+ 
     else:
         raise ValueError(f"Unknown task: {task}")
-
+ 
     return y
 
 
@@ -189,19 +183,19 @@ def make_dataset(
 ) -> tf.data.Dataset:
     """
     Create a tf.data.Dataset for training/validation.
-
+ 
     This function is used by both JSSP and SAT image training pipelines.
     To keep backward compatibility:
-
+ 
     - If ``target_h``/``target_w`` are provided, they take precedence.
     - Otherwise, if ``config`` is provided, values are read from
       ``config["data"]["image"]["target_height"/"target_width"]``.
     - As a last resort, defaults of 128×128 are used.
-
+ 
     Args:
         paths: List of paths to .npy image files
         labels: Label array
-        task: One of 'classification', 'multilabel', or 'regression'
+        task: One of 'classification' or 'multilabel'
         batch_size: Batch size
         shuffle: Whether to shuffle the dataset
         target_h: Target image height (optional; may be derived from config)

@@ -100,7 +100,7 @@ def make_dataset(
     Args:
         paths: List of paths to .npy tensor files.
         labels: Labels array.
-        task: Task type ('classification', 'multilabel', 'regression').
+        task: Task type ('classification' or 'multilabel').
         batch_size: Batch size.
         shuffle: Whether to shuffle data.
         config: Configuration dictionary.
@@ -160,7 +160,7 @@ def build_labels(
         df: DataFrame with solver performance data.
         solver_cols: Dictionary with 'runtime' and 'score' column lists.
         task: Task type ('classification' or 'multilabel').
-        use_score: Whether to use score columns.
+        use_score: Whether to use score columns (classification only).
         time_limit: Time limit for multilabel task.
  
     Returns:

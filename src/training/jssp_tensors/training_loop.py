@@ -122,7 +122,7 @@ def train_fold(
         if task == "classification":
             y_true_list.append(yb.numpy())
             y_pred_list.append(np.argmax(out, axis=1))
-        elif task == "multilabel":
+        else:  # multilabel
             y_true_list.append(yb.numpy())
             y_score_list.append(out)
             y_pred_list.append((out >= 0.5).astype(np.float32))
@@ -263,7 +263,9 @@ def run_kfold(
     fold_df = pd.DataFrame(fold_results)
     fold_df.to_csv(os.path.join(root_outdir, "metrics_per_fold.csv"), index=False)
      
-    # Primary metric to aggregate (accuracy for classification, F1-micro for multilabel)
+    # Primary metric to aggregate:
+    # - accuracy   for classification
+    # - f1_micro   for multilabel
     metric_key = {
         "classification": "accuracy",
         "multilabel": "f1_micro",

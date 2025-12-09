@@ -42,7 +42,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
         raise ValueError("Missing 'csv_path' in data configuration")
 
     # Validate training task
-    valid_tasks = ["classification", "multilabel", "regression"]
+    valid_tasks = ["classification", "multilabel"]
     task = config["training"].get("task")
     if task not in valid_tasks:
         raise ValueError(f"Invalid task '{task}'. Must be one of: {valid_tasks}")
