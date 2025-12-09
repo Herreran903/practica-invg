@@ -71,7 +71,7 @@ output:
   parent_dir: "results/jssp/images"
   
   # Whether to append task name to output directory
-  append_task_to_dirname: false
+  append_task_to_dirname: true
   
   # Timestamp format for output directories
   timestamp_format: "%Y%m%d_%H%M%S"

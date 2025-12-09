@@ -262,13 +262,13 @@ def run_kfold(
     # Save per-fold table
     fold_df = pd.DataFrame(fold_results)
     fold_df.to_csv(os.path.join(root_outdir, "metrics_per_fold.csv"), index=False)
-    
+     
     # Primary metric to aggregate (accuracy for classification, F1-micro for multilabel)
     metric_key = {
         "classification": "accuracy",
         "multilabel": "f1_micro",
     }[task]
-    
+     
     metric_values = [r[metric_key] for r in fold_results]
     summary = {
         "task": task,
@@ -279,7 +279,7 @@ def run_kfold(
         "max": float(np.max(metric_values)),
         "folds": folds,
     }
-
+    
     # Optionally aggregate resolved_rate across folds (for tasks where it exists,
     # e.g. multilabel JSSP tensors using evaluate_fold from jssp_images)
     resolved_vals = [r["resolved_rate"] for r in fold_results if "resolved_rate" in r]
@@ -288,7 +288,29 @@ def run_kfold(
         summary["resolved_rate_std"] = float(np.std(resolved_vals))
         summary["resolved_rate_min"] = float(np.min(resolved_vals))
         summary["resolved_rate_max"] = float(np.max(resolved_vals))
-    
+
+    # Optionally aggregate AST (average solving time) across folds when available.
+    # This is the "Average Running Time" metric from the paper, measured on the
+    # portfolio induced by the CNN's predictions.
+    ast_vals = [r["AST_sec"] for r in fold_results if "AST_sec" in r]
+    if ast_vals:
+        summary["AST_sec_mean"] = float(np.mean(ast_vals))
+        summary["AST_sec_std"] = float(np.std(ast_vals))
+        summary["AST_sec_min"] = float(np.min(ast_vals))
+        summary["AST_sec_max"] = float(np.max(ast_vals))
+
+    # Optionally aggregate misclassification rate (1 - accuracy) across folds
+    mis_vals = [
+        r["misclassification_rate"]
+        for r in fold_results
+        if "misclassification_rate" in r
+    ]
+    if mis_vals:
+        summary["misclassification_rate_mean"] = float(np.mean(mis_vals))
+        summary["misclassification_rate_std"] = float(np.std(mis_vals))
+        summary["misclassification_rate_min"] = float(np.min(mis_vals))
+        summary["misclassification_rate_max"] = float(np.max(mis_vals))
+     
     with open(os.path.join(root_outdir, "metrics_summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
 

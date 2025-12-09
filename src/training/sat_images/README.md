@@ -26,14 +26,14 @@ python -m src.training.sat_images.cli \
   --task classification \
   --folds 5 \
   --repeats 5 \
+  --solvers ebglucose,glucose2,lingeling,clasp1,clasp2 \
   --time_limit 1200
 
 # Filter specific solvers (names MUST match the 'algorithm' values in algorithm_runs.arff)
 # Example for the SAT12-INDU scenario: ebglucose, glucose2, lingeling, clasp1, clasp2, ...
 python -m src.training.sat_images.cli \
   --csv data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv \
-  --task multilabel \
-  --solvers ebglucose,glucose2,lingeling,clasp1,clasp2
+  --task multilabel
 ```
 
 ## Configuration

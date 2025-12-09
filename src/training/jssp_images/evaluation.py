@@ -69,6 +69,8 @@ def evaluate_classification(
     return {
         "accuracy": float(acc),
         "f1_macro": float(f1_macro),
+        # Misclassification rate is simply 1 - accuracy, as used in the paper
+        "misclassification_rate": float(1.0 - acc),
     }
 
 
@@ -101,38 +103,47 @@ def evaluate_multilabel(
     f1_micro = f1_score(
         y_true.flatten(), y_pred.flatten(), average="micro", zero_division=0
     )
-
+ 
     # Per-label F1
     f1_per_label = []
     for j in range(y_true.shape[1]):
         f1_j = f1_score(y_true[:, j], y_pred[:, j], zero_division=0)
         f1_per_label.append(f1_j)
-
+ 
     f1_macro = float(np.mean(f1_per_label))
-
+ 
+    # Average number of misclassified solvers per instance (Table 3-style metric).
+    # y_true and y_pred are binary {0,1} matrices [N, C]. We count, for each
+    # instance, how many solver labels are wrong (FP + FN), then average.
+    diff = (y_true != y_pred).astype(np.int32)
+    mis_per_instance = diff.sum(axis=1)
+    avg_misclassified = (
+        float(np.mean(mis_per_instance)) if mis_per_instance.size > 0 else 0.0
+    )
+ 
     # Save per-label F1
     f1_df = pd.DataFrame({"label": solver_names, "F1": f1_per_label})
     f1_df.to_csv(
         os.path.join(fold_dir, f"fold{fold_idx}_f1_per_label.csv"), index=False
     )
-
+ 
     # Try to load scores for AP computation
     scores_path = os.path.join(fold_dir, f"fold{fold_idx}_y_scores.npy")
     if os.path.exists(scores_path):
         y_scores = np.load(scores_path)
         ap_per_label = {}
-
+ 
         for j, name in enumerate(solver_names):
             yt = y_true[:, j]
             ys = y_scores[:, j]
-
+ 
             # Skip if only one class present
             if np.unique(yt).size < 2:
                 continue
-
+ 
             ap = average_precision_score(yt, ys)
             ap_per_label[name] = ap
-
+ 
         # Save AP per label
         if ap_per_label:
             ap_df = pd.DataFrame(
@@ -141,10 +152,14 @@ def evaluate_multilabel(
             ap_df.to_csv(
                 os.path.join(fold_dir, f"fold{fold_idx}_ap_per_label.csv"), index=False
             )
-
+ 
     return {
         "f1_micro": float(f1_micro),
         "f1_macro": float(f1_macro),
+        # For multilabel we interpret "misclassification_rate" as the average number
+        # of misclassified solvers per instance (FP + FN per row), matching Table 3.
+        "misclassification_rate": avg_misclassified,
+        "avg_misclassified_solvers_per_instance": avg_misclassified,
     }
 
 
@@ -257,7 +272,9 @@ def evaluate_fold(
             y_true, y_pred, solver_names, fold_dir, fold_idx
         )
  
-        # Optional resolved_rate for JSSP: predicted solver runtime < time_limit_s
+        # Optional resolved_rate and AST for JSSP classification:
+        # - resolved_rate: fraction of instances where predicted solver runtime < time_limit_s
+        # - AST_sec: average solving time (runtime of predicted solver), capped at time_limit_s
         if (
             val_df is not None
             and solver_runtime_cols is not None
@@ -266,21 +283,34 @@ def evaluate_fold(
             time_limit = _get_time_limit_s()
             n = len(val_df)
             resolved = 0
+            times: list[float] = []
  
             for i, cls_idx in enumerate(y_pred):
                 idx = int(cls_idx)
                 if idx < 0 or idx >= len(solver_runtime_cols):
-                    continue
-                runtime_col = solver_runtime_cols[idx]
-                try:
-                    rt = float(val_df.iloc[i][runtime_col])
-                except Exception:
+                    # Treat invalid prediction as unresolved and assign max time
+                    times.append(time_limit)
                     continue
  
+                runtime_col = solver_runtime_cols[idx]
+                row = val_df.iloc[i]
+                try:
+                    rt = float(row.get(runtime_col, np.nan))
+                except Exception:
+                    rt = np.nan
+ 
+                # Resolved if runtime is finite and below time limit
                 if np.isfinite(rt) and rt < time_limit:
                     resolved += 1
  
+                # For AST, penalize invalid/timeout with time_limit
+                if (not np.isfinite(rt)) or rt >= time_limit:
+                    times.append(time_limit)
+                else:
+                    times.append(rt)
+ 
             metrics["resolved_rate"] = float(resolved / n) if n > 0 else 0.0
+            metrics["AST_sec"] = float(np.mean(times)) if times else 0.0
  
         # Generate visualizations
         plot_confusion_matrix(y_true, y_pred, solver_names, fold_dir, fold_idx)
@@ -289,8 +319,10 @@ def evaluate_fold(
     elif task == "multilabel":
         metrics = evaluate_multilabel(y_true, y_pred, solver_names, fold_dir, fold_idx)
  
-        # Optional resolved_rate for JSSP multilabel:
-        # instance is "resolved" if any predicted-1 solver has runtime < time_limit_s
+        # Optional resolved_rate and AST for JSSP multilabel:
+        # - resolved_rate: instance is "resolved" if any predicted-1 solver has runtime < time_limit_s
+        # - AST_sec: average solving time using the minimum runtime among predicted solvers,
+        #            capped at time_limit_s when none succeed.
         if (
             val_df is not None
             and solver_runtime_cols is not None
@@ -299,33 +331,50 @@ def evaluate_fold(
             time_limit = _get_time_limit_s()
             n = len(val_df)
             resolved = 0
+            times: list[float] = []
  
             for i in range(n):
                 row_pred = y_pred[i]
                 # Treat >0.5 as active solver (works with {0,1} or probabilities)
                 active_idxs = np.where(row_pred > 0.5)[0]
+                row = val_df.iloc[i]
+ 
+                # No predicted solvers: unresolved, full penalty
                 if active_idxs.size == 0:
+                    times.append(time_limit)
                     continue
  
-                row = val_df.iloc[i]
                 instance_resolved = False
+                best_rt = np.inf
+ 
                 for idx in active_idxs:
                     if idx < 0 or idx >= len(solver_runtime_cols):
                         continue
                     runtime_col = solver_runtime_cols[int(idx)]
                     try:
-                        rt = float(row[runtime_col])
+                        rt = float(row.get(runtime_col, np.inf))
                     except Exception:
-                        continue
+                        rt = np.inf
  
+                    # Track minimum runtime among predicted solvers
+                    if np.isfinite(rt):
+                        best_rt = min(best_rt, rt)
+ 
+                    # Check resolution under time limit
                     if np.isfinite(rt) and rt < time_limit:
                         instance_resolved = True
-                        break
  
                 if instance_resolved:
                     resolved += 1
  
+                # For AST, use best runtime if valid, otherwise penalize with time_limit
+                if (not np.isfinite(best_rt)) or best_rt >= time_limit:
+                    times.append(time_limit)
+                else:
+                    times.append(best_rt)
+ 
             metrics["resolved_rate"] = float(resolved / n) if n > 0 else 0.0
+            metrics["AST_sec"] = float(np.mean(times)) if times else 0.0
  
         # Generate visualizations
         plot_pr_curves_multilabel(y_true, solver_names, fold_dir, fold_idx)

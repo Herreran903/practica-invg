@@ -74,6 +74,9 @@ def run_kfold_with_repeats(
     all_results = []
     per_rep_summary = []
     resolved_all: List[float] = []
+    # For global AST (Average Solving Time) and misclassification aggregation
+    ast_all: List[float] = []
+    mis_all: List[float] = []
 
     for rep in range(repeats):
         seed_rep = base_seed + rep
@@ -116,7 +119,29 @@ def run_kfold_with_repeats(
             rep_row["resolved_rate_max"] = float(np.max(resolved_vals_rep))
             # Also accumulate all resolved_rate values across repetitions
             resolved_all.extend(resolved_vals_rep)
-
+ 
+        # Collect AST statistics per repetition (Average Solving Time over instances)
+        ast_vals_rep = [r["AST_sec"] for r in fold_results if "AST_sec" in r]
+        if ast_vals_rep:
+            rep_row["AST_sec_mean"] = float(np.mean(ast_vals_rep))
+            rep_row["AST_sec_std"] = float(np.std(ast_vals_rep))
+            rep_row["AST_sec_min"] = float(np.min(ast_vals_rep))
+            rep_row["AST_sec_max"] = float(np.max(ast_vals_rep))
+            ast_all.extend(ast_vals_rep)
+ 
+        # Collect misclassification statistics per repetition (only for classification folds)
+        mis_vals_rep = [
+            r["misclassification_rate"]
+            for r in fold_results
+            if "misclassification_rate" in r
+        ]
+        if mis_vals_rep:
+            rep_row["misclassification_rate_mean"] = float(np.mean(mis_vals_rep))
+            rep_row["misclassification_rate_std"] = float(np.std(mis_vals_rep))
+            rep_row["misclassification_rate_min"] = float(np.min(mis_vals_rep))
+            rep_row["misclassification_rate_max"] = float(np.max(mis_vals_rep))
+            mis_all.extend(mis_vals_rep)
+ 
         per_rep_summary.append(rep_row)
 
         print(
@@ -144,6 +169,20 @@ def run_kfold_with_repeats(
         global_summary["resolved_rate_std"] = float(np.std(resolved_all))
         global_summary["resolved_rate_min"] = float(np.min(resolved_all))
         global_summary["resolved_rate_max"] = float(np.max(resolved_all))
+ 
+    # Global AST (Average Solving Time) aggregated across all folds and repetitions
+    if ast_all:
+        global_summary["AST_sec_mean"] = float(np.mean(ast_all))
+        global_summary["AST_sec_std"] = float(np.std(ast_all))
+        global_summary["AST_sec_min"] = float(np.min(ast_all))
+        global_summary["AST_sec_max"] = float(np.max(ast_all))
+ 
+    # Global misclassification rate aggregated across all folds and repetitions
+    if mis_all:
+        global_summary["misclassification_rate_mean"] = float(np.mean(mis_all))
+        global_summary["misclassification_rate_std"] = float(np.std(mis_all))
+        global_summary["misclassification_rate_min"] = float(np.min(mis_all))
+        global_summary["misclassification_rate_max"] = float(np.max(mis_all))
 
     # Save per-repetition summary
     pd.DataFrame(per_rep_summary).to_csv(
@@ -327,7 +366,7 @@ def _run_single_kfold(
         "multilabel": "f1_micro",
         "regression": "mae",
     }[task]
-
+ 
     metric_values = [r[metric_key] for r in fold_results]
     summary = {
         "task": task,
@@ -338,7 +377,7 @@ def _run_single_kfold(
         "max": float(np.max(metric_values)),
         "folds": folds,
     }
-
+ 
     # Aggregate resolved_rate across folds (classification and multilabel where available)
     resolved_vals = [r["resolved_rate"] for r in fold_results if "resolved_rate" in r]
     if resolved_vals:
@@ -347,6 +386,26 @@ def _run_single_kfold(
         summary["resolved_rate_min"] = float(np.min(resolved_vals))
         summary["resolved_rate_max"] = float(np.max(resolved_vals))
  
+    # Aggregate AST across folds (Average Solving Time for the CNN-induced portfolio)
+    ast_vals = [r["AST_sec"] for r in fold_results if "AST_sec" in r]
+    if ast_vals:
+        summary["AST_sec_mean"] = float(np.mean(ast_vals))
+        summary["AST_sec_std"] = float(np.std(ast_vals))
+        summary["AST_sec_min"] = float(np.min(ast_vals))
+        summary["AST_sec_max"] = float(np.max(ast_vals))
+ 
+    # Aggregate misclassification rate across folds (only for classification runs)
+    mis_vals = [
+        r["misclassification_rate"]
+        for r in fold_results
+        if "misclassification_rate" in r
+    ]
+    if mis_vals:
+        summary["misclassification_rate_mean"] = float(np.mean(mis_vals))
+        summary["misclassification_rate_std"] = float(np.std(mis_vals))
+        summary["misclassification_rate_min"] = float(np.min(mis_vals))
+        summary["misclassification_rate_max"] = float(np.max(mis_vals))
+  
     # Save summary
     with open(os.path.join(outdir, "metrics_summary.json"), "w") as f:
         json.dump(summary, f, indent=2)

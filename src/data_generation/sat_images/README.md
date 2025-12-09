@@ -41,13 +41,10 @@ src/data_generation/sat_images/
 ### ASlib Scenario
 An ASlib scenario directory must contain:
 - **algorithm_runs.arff**: Solver performance data (required)
-- **description.txt**: Scenario metadata including timeout (optional)
 
 ### Instance Files
 Directory containing raw SAT instance files:
 - **CNF files**: DIMACS CNF format
-- **XCSP files**: XML-based constraint format
-- **DZN files**: MiniZinc data format
 - Other text-based formats
 
 ## Output Structure

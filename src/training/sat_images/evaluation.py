@@ -55,7 +55,10 @@ def evaluate_classification_sat(
     metrics = _evaluate_classification_base(
         y_true, y_pred, solver_names, fold_dir, fold_idx
     )
-
+    # Misclassification rate (as in the paper): 1 - accuracy
+    if "accuracy" in metrics:
+        metrics["misclassification_rate"] = float(1.0 - metrics["accuracy"])
+ 
     # SAT-specific metrics
     sat_cfg = config.get("sat", {})
     data_cfg = config.get("data", {})
