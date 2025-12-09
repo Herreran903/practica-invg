@@ -1,37 +1,31 @@
 # Utility Scripts
 
-This directory contains small standalone utilities that help analyze datasets and inspect `.npy` files produced by the data-generation pipelines. This README documents:
+This folder contains small, standalone utilities to inspect datasets and `.npy`/tensor files produced by the SAT and JSSP pipelines.
 
-- [`utils/dataset_imbalance.py`](utils/dataset_imbalance.py)
-- [`utils/visualize_tensor.py`](utils/visualize_tensor.py)
+Current public scripts:
 
-Other files in `utils/` are either internal helpers or legacy and are not covered here.
+- [`dataset_imbalance.py`](utils/dataset_imbalance.py) – analyze solver/label imbalance in CSV datasets
+- [`visualize_tensor.py`](utils/visualize_tensor.py) – visualize `.npy`/tensor files and standard images
 
 ---
 
-## `utils/dataset_imbalance.py`
+## `dataset_imbalance.py` – dataset imbalance analysis
 
-[`utils/dataset_imbalance.py`](utils/dataset_imbalance.py) is a CLI tool to analyze **label / solver imbalance** in the CSVs produced by the data-generation modules (SAT and JSSP). It helps you understand:
+Command-line tool to inspect how balanced a solver-selection dataset is.
 
-- How often each solver is the (runtime) winner.
-- How many **viable** solvers exist per instance under a given time limit.
-- Basic quality and missing-value statistics.
-
-### Expected Input
-
-A CSV like:
+It works with any CSV produced by the data-generation modules, for example:
 
 - SAT images: `data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv`
 - JSSP images: `data/jssp/datasets/jssp_cnn_data_images/ground_truth_jsp_generated_dataset.csv`
 - JSSP tensors: `data/jssp/datasets/jssp_cnn_data_tensors/ground_truth_jsp_generated_dataset.csv`
 
-Required columns (the tool auto-detects):
+It automatically detects:
 
-- `*_Runtime_s` — per-solver runtime columns.
-- Optionally `*_Status` — per-solver status columns (OK/TIMEOUT/…).
-- Optionally `Winner_Key` — single-best solver label (if present).
+- `*_Runtime_s` – per-solver runtime columns
+- optional `*_Status` – per-solver status columns
+- optional `Winner_Key` – known-best solver label (if present)
 
-### Basic Usage
+### Basic usage
 
 From the project root:
 
@@ -41,7 +35,7 @@ python -m utils.dataset_imbalance \
   --time-limit 60
 ```
 
-For a SAT CSV:
+SAT CSV:
 
 ```bash
 python -m utils.dataset_imbalance \
@@ -49,114 +43,132 @@ python -m utils.dataset_imbalance \
   --time-limit 1200
 ```
 
-### Key Options
+### Key options
+
+```bash
+python -m utils.dataset_imbalance --help
+```
+
+Common flags:
 
 - `--csv PATH`  
-  Path to the CSV to analyze.
+  CSV file to analyze (required).
 
 - `--time-limit SECONDS`  
-  Time limit used to decide whether a solver is **viable** for an instance.
+  Time limit used to decide if a solver is **viable** for an instance (default 60.0).
 
-- `--valid-statuses ...`  
-  Optional list of status values considered successful (defaults are sensible for SAT).
+- `--valid-statuses "ok,sat,unsat"`  
+  Comma-separated list of status values considered successful.
 
-- `--invalid-statuses ...`  
-  Optional list of status values considered failures (timeouts, crashes, etc.).
+- `--invalid-statuses "timeout,time_out,timedout,memout,crash,error,fail"`  
+  Comma-separated list of status values considered failures.
 
-### What It Reports
+### What it reports
 
-Typical output includes:
+For the given CSV, the script prints:
 
 - Basic dataset info (rows, columns, missing values).
-- Label distribution if `Winner_Key` is present.
-- **Classification-style** distribution:
-  - Argmin over `*_Runtime_s` (fastest solver), with invalid statuses treated as infinite.
-- **Multilabel-style viability**:
+- `Winner_Key` distribution (if present).
+- **Classification-style** label distribution:
+  - Argmin over `*_Runtime_s`, treating invalid statuses as infinite (never winners).
+- **Multilabel-style** viability:
   - For each instance, how many solvers are viable (`runtime < time_limit` and status not invalid).
-  - Per-solver frequency of being viable.
-  - Distribution of number of viable solvers per instance.
-- Per-solver status breakdown (valid / invalid / other / missing).
+  - Per-solver fraction of instances where the solver is viable.
+  - Histogram of “number of viable solvers per instance”.
+- Per-solver status summary:
+  - Counts and percentages of valid / invalid / other / missing statuses.
 
-This is useful before training to check if your dataset is extremely imbalanced (e.g. one solver always wins, or almost no instances have multiple viable solvers).
+Use this before training to detect extreme imbalance (e.g. one solver always winning, or almost no instances with multiple viable solvers).
 
 ---
 
-## `utils/visualize_tensor.py`
+## `visualize_tensor.py` – tensor/image viewer
 
-[`utils/visualize_tensor.py`](utils/visualize_tensor.py) is a **unified viewer** for inspecting `.npy` / tensor files and standard image formats. It replaces older, more fragmented visualization scripts and is recommended for:
+Unified viewer for `.npy`/tensor artifacts and standard image formats. It replaces older visualization scripts and is the recommended way to quickly inspect inputs.
 
-- Quickly inspecting JSSP images (`Image_Npy_Path` from `jssp_images`).
-- Inspecting JSSP tensors (`Image_Npy_Path` / `Tensor_Npy_Path` from `jssp_tensors`).
-- Inspecting SAT images (`Image_Npy_Path` from `sat_images`).
-- Debugging arbitrary `.npy`, `.npz`, `.pt`, `.pth`, `.pkl` tensors.
+Typical uses:
 
-### Supported Input Types
+- JSSP images: `Image_Npy_Path` from the JSSP image datasets
+- JSSP tensors: `Image_Npy_Path` / `Tensor_Npy_Path` from the JSSP tensor datasets
+- SAT images: `Image_Npy_Path` from the SAT image datasets
+- Arbitrary `.npy`, `.npz`, `.pt`, `.pth`, `.pkl` tensors
 
-By filename extension:
+### Supported file types
 
-- **NumPy / tensors**:
-  - `.npy`, `.npz`
-  - `.pt`, `.pth` (PyTorch)
-  - `.pkl` (pickled arrays / tensors / dicts)
+- **Tensor-like files**
+  - `.npy`, `.npz` (NumPy)
+  - `.pt`, `.pth` (PyTorch tensors or state dicts)
+  - `.pkl` (pickled NumPy arrays / tensors / dict-like objects)
 
-- **Standard images**:
-  - `.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif` (via Pillow)
+- **Standard images**
+  - `.png`, `.jpg`, `.jpeg`, `.bmp`, `.tif`, `.tiff`
 
-Internally, it:
-
-- Loads the array or tensor.
-- Handles 2D or 3D arrays, inferring channels (`H×W` or `H×W×C`).
-- Optionally normalizes to `[0, 1]` for display.
-- Plots with Matplotlib.
-
-### Basic Usage
+### Basic usage
 
 From the project root:
 
 ```bash
-python -m utils.visualize_tensor path/to/file.npy
-```
-
-Examples:
-
-```bash
-# Visualize a JSSP image (Text-to-Image)
+# Visualize a JSSP image
 python -m utils.visualize_tensor \
   data/jssp/datasets/jssp_cnn_data_images/images/GEN_10x10_1_image.npy
+```
 
-# Visualize a JSSP tensor (padded 10x10x2 or 10x10x1)
+```bash
+# Visualize a JSSP tensor (e.g. 10x10x2)
 python -m utils.visualize_tensor \
   data/jssp/datasets/jssp_cnn_data_tensors/images/GEN_10x10_1_tensor.npy
+```
 
+```bash
 # Visualize a SAT image
 python -m utils.visualize_tensor \
   data/sat/datasets/sat_cnn_data_images/images/instance123__abcdef123456.npy
 ```
 
-### Common Options (if implemented in the script)
+### Common options
 
-Depending on the version of [`utils/visualize_tensor.py`](utils/visualize_tensor.py), typical CLI flags include:
+Show available flags:
 
-- `--show` / `--no-show` — whether to display the figure interactively.
-- `--save PATH` — save the rendered image to a file.
-- `--normalize` — apply min–max normalization to `[0, 1]` before plotting.
-- `--transpose` — treat input as `C×H×W` instead of `H×W×C` (common for some tensor formats).
-- `--channel N` — select a specific channel to display for multi-channel tensors.
+```bash
+python -m utils.visualize_tensor --help
+```
 
-(If in doubt, run `python -m utils.visualize_tensor --help` to see the exact set of supported options.)
+Useful combinations:
 
-### When to Use It
+```bash
+# Save the rendered image instead of opening a window
+python -m utils.visualize_tensor \
+  data/jssp/datasets/jssp_cnn_data_images/images/GEN_10x10_1_image.npy \
+  --save outputs/gen_10x10_1_image.png \
+  --no-show
+```
 
-- **After data generation**: sanity-check a few random `.npy` files to confirm shapes and intensities:
-  - JSSP images: expect `(128, 128)` or `(128, 128, 1)`.
-  - JSSP tensors: expect `(max_jobs, max_machines, n_channels)`, typically `(10, 10, 2)`.
-  - SAT images: expect `(128, 128)` or `(128, 128, 1)`.
+```bash
+# Visualize a specific key from an .npz or .pt/.pth/.pkl
+python -m utils.visualize_tensor \
+  checkpoints/weights.pt \
+  --key features \
+  --normalize
+```
 
-- **During debugging**: if a training run crashes with shape issues, open the offending `.npy` to confirm its dimensions and channel ordering.
+```bash
+# Explicitly treat a 3D tensor as CHW and select a colormap
+python -m utils.visualize_tensor \
+  path/to/tensor.npy \
+  --channel-order chw \
+  --cmap gray
+```
+
+The script:
+
+- Loads the array or tensor.
+- Handles 2D or 3D arrays, inferring channel order by default.
+- Optionally normalizes values to `[0, 1]` for display.
+- Renders with Matplotlib and optionally saves the figure.
 
 ---
 
-## Recommended Workflow
+## Recommended workflow
 
-- Use [`utils/dataset_imbalance.py`](utils/dataset_imbalance.py) **before training** to understand solver/label imbalance and adjust your experimental design (e.g., solver subsets, time limits).
-- Use [`utils/visualize_tensor.py`](utils/visualize_tensor.py) **after data generation** and when debugging training issues, to visually check that inputs look as expected and have the correct shapes.
+- Run [`dataset_imbalance.py`](utils/dataset_imbalance.py) **before training** to understand solver/label imbalance and adjust time limits or solver subsets if needed.
+- Run [`visualize_tensor.py`](utils/visualize_tensor.py) **after data generation** and when debugging training issues, to quickly check that `.npy` files have the expected shape and content.

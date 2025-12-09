@@ -1,131 +1,126 @@
-# SAT Images Data Generation
+# SAT Image Data Generation
 
-This module generates datasets for SAT (Boolean Satisfiability) problems with grayscale image representations from ASlib scenarios. It processes algorithm performance data and converts SAT instance files to images for machine learning applications.
+This folder generates supervised datasets for SAT (Boolean Satisfiability) problems where each instance is encoded as a grayscale image and paired with solver performance metrics in a CSV file.
 
-## Overview
+It works on **existing ASlib scenarios** (no instance generation) and:
 
-The SAT Images generator processes ASlib (Algorithm Selection Library) scenarios to create datasets suitable for algorithm selection and performance prediction tasks. The pipeline:
+- parses solver runtimes from ASlib
+- resolves paths to raw SAT instances
+- converts each instance file into a fixed‑size grayscale image
 
-1. **Loads ASlib scenario** (algorithm_runs.arff and description.txt)
-2. **Parses solver performance data** (runtimes and statuses)
-3. **Pivots data by instance×solver** and identifies best solver per instance
-4. **Resolves paths to raw instance files** (CNF, XCSP, DZN, etc.)
-5. **Generates ground truth CSV** with solver performance metrics
-6. **Converts instances to grayscale images** (128×128 .npy files)
+---
 
-## Key Difference from JSSP Modules
+## Folder contents
 
-While JSSP modules **generate** problem instances, SAT Images **processes existing benchmarks** from ASlib scenarios. It focuses on:
-- Parsing ARFF files (ASlib format)
-- Handling multiple SAT solvers and their performance data
-- Resolving complex instance path structures
-- Converting various SAT file formats (CNF, XCSP, etc.) to images
+- [`cli.py`](src/data_generation/sat_images/cli.py) – command‑line entry point for the full pipeline
+- [`config.yaml`](src/data_generation/sat_images/config.yaml) – configuration for outputs, image size, and ASlib path mapping
+- [`prepare_aslib_dataset.py`](src/data_generation/sat_images/prepare_aslib_dataset.py) – builds the ground‑truth CSV from an ASlib scenario
+- [`image_converter.py`](src/data_generation/sat_images/image_converter.py) – SAT file → image `.npy` conversion
+- [`aslib_parser.py`](src/data_generation/sat_images/aslib_parser.py) – reads `algorithm_runs.arff` and related metadata
+- [`instance_resolver.py`](src/data_generation/sat_images/instance_resolver.py) – resolves instance IDs to concrete file paths
+- [`__init__.py`](src/data_generation/sat_images/__init__.py) – module exports
 
-## Directory Structure
+---
 
-```
-src/data_generation/sat_images/
-├── config.yaml                      # Central configuration file
-├── config_loader.py                 # Configuration management utilities
-├── aslib_parser.py                  # ASlib ARFF and description.txt parsing
-├── instance_resolver.py             # Instance file path resolution
-├── prepare_aslib_dataset.py         # ASlib scenario processing pipeline
-├── image_converter.py               # SAT file to grayscale image conversion
-├── cli.py                           # Command-line interface
-├── __init__.py                      # Module exports
-└── README.md                        # This file
-```
+## Inputs
 
-## Input Requirements
+Configured in [`config.yaml`](src/data_generation/sat_images/config.yaml):
 
-### ASlib Scenario
-An ASlib scenario directory must contain:
-- **algorithm_runs.arff**: Solver performance data (required)
+- **ASlib scenario directory** (when not using `--skip-aslib`)
+  - Required file: `algorithm_runs.arff`
+  - Optional: `description.txt` with timeout
+- **Instances directory**
+  - Plaintext SAT instances: CNF (`*.cnf`), XCSP, DZN, etc.
+  - Ideally **already decompressed** (no `.gz`, `.bz2`, `.xz`, `.zip`, `.lzma`)
+- **Image parameters**
+  - `image.target_size` – square size for grayscale images (default `128`)
+- **ASlib settings**
+  - `aslib.default_timeout_s` – default timeout if not present in scenario
+  - `aslib.prefix_map` – mapping from instance ID prefixes to subdirectories for path resolution
 
-### Instance Files
-Directory containing raw SAT instance files:
-- **CNF files**: DIMACS CNF format
-- Other text-based formats
+---
 
-## Output Structure
+## Outputs
 
-```
-data/sat/datasets/sat_cnn_data_images/
-├── ground_truth_aslib.csv          # Ground truth with solver metrics
-└── images/
-    └── *__<hash>.npy               # Grayscale images (128×128, float32)
+All outputs are written under `data/sat/datasets/` (relative to the project root).
+
+Default layout:
+
+```text
+data/sat/datasets/
+└── sat_cnn_data_images/
+    ├── ground_truth_aslib.csv
+    └── images/
+        └── <instance_name>__<hash>.npy
 ```
 
-### CSV Columns
+CSV columns (main ones):
 
-- `Instance_Id`: Original instance identifier from ASlib
-- `Instance_Name`: Base filename without extension
-- `Raw_Text_Path`: Absolute path to raw instance file
-- `Time_Limit_s`: Timeout used for this scenario
-- `Winner_Key`: Best performing solver for this instance
-- `{SOLVER}_Runtime_s`: Runtime for each solver (seconds)
-- `{SOLVER}_Status`: Status for each solver (OK, TIMEOUT, etc.)
-- `Image_Npy_Path`: Path to the generated image file
+- `Instance_Id` – original ASlib instance identifier
+- `Instance_Name` – base filename without extension
+- `Raw_Text_Path` – absolute path to the raw instance file
+- `Time_Limit_s` – timeout used
+- `Winner_Key` – best solver for this instance
+- `{SOLVER}_Runtime_s` – runtime per solver (seconds)
+- `{SOLVER}_Status` – run status per solver
+- `Image_Npy_Path` – path to the generated image `.npy`
 
-### Image Format
+Image format:
 
-Images are stored as NumPy arrays (.npy files):
-- **Shape**: (128, 128) by default (configurable)
-- **Data type**: float32
-- **Content**: Raw byte/ASCII intensities from the instance file, reshaped and resized
-- **Normalization**: None by default (paper-like). Optional z-score via CLI flag `--normalize` or by passing `normalize=True` to [`sat_images.image_converter.convert_dataset_to_images()`](src/data_generation/sat_images/image_converter.py:84)
-- **Visualization**: To reproduce paper-like figures, display with `cmap="gray"` and fixed range `vmin=0, vmax=255` (e.g., matplotlib)
-- **Naming**: `<instance_name>__<hash>.npy` (hash prevents collisions)
+- type: NumPy array saved as `.npy`
+- shape: `(H, W)` with default `128 × 128`
+- dtype: `float32`
+- content: byte/ASCII intensities from the instance text, reshaped and resized
+- normalization:
+  - **disabled by default** (raw `[0..255]` for paper‑like images)
+  - optional z‑score normalization via `--normalize`
 
-## Configuration
+---
 
-All parameters are centralized in [`config.yaml`](config.yaml). Key sections:
+## CLI usage (from project root)
 
-### Output Directories
-```yaml
-output:
-  base_dir: "data/sat/datasets"
-  default_output_dir: "sat_cnn_data_images"
+Run the full pipeline via [`cli.py`](src/data_generation/sat_images/cli.py):
+
+```bash
+python -m src.data_generation.sat_images.cli [options]
 ```
 
-### Image Parameters
-```yaml
-image:
-  target_size: 128  # Size of square grayscale images
-```
+### 1. Basic run: process one ASlib scenario
 
-### ASlib Parameters
-```yaml
-aslib:
-  default_timeout_s: 5000.0  # Default if not in description.txt
-  
-  # Prefix mapping for resolving instance paths
-  prefix_map:
-    "SAT-Race-2010-CNF": "Application SAT+UNSAT/SAT Race 2010"
-    "SATCompetition2007": "SATCompetition2007/industrial"
-    # ... more mappings
-```
-
-## Usage
-
-### From Project Root
-
-**Basic usage:**
 ```bash
 python -m src.data_generation.sat_images.cli \
   --scenario-dir data/sat/aslib/sc2012-application \
   --instances-dir data/sat/instances/sc2012-application
 ```
 
-**With custom output directory:**
+This will:
+
+1. read `algorithm_runs.arff` from `--scenario-dir`
+2. build `ground_truth_aslib.csv` under `data/sat/datasets/sat_cnn_data_images/`
+3. create grayscale images under `data/sat/datasets/sat_cnn_data_images/images/`
+
+---
+
+### 2. Custom output directory
+
 ```bash
 python -m src.data_generation.sat_images.cli \
   --scenario-dir data/sat/aslib/sc2012-application \
   --instances-dir data/sat/instances/sc2012-application \
-  --output-dir data/sat/datasets/my_custom_output
+  --output-dir data/sat/datasets/my_sat_images
 ```
 
-**With custom image size:**
+Outputs:
+
+- CSV at `data/sat/datasets/my_sat_images/ground_truth_aslib.csv`
+- images under `data/sat/datasets/my_sat_images/images/`
+
+---
+
+### 3. Custom image size and normalization
+
+Increase image size to `256 × 256`:
+
 ```bash
 python -m src.data_generation.sat_images.cli \
   --scenario-dir data/sat/aslib/sc2012-application \
@@ -133,7 +128,31 @@ python -m src.data_generation.sat_images.cli \
   --image-size 256
 ```
 
-**Skip ASlib processing (only convert existing dataset):**
+Enable per‑image z‑score normalization:
+
+```bash
+python -m src.data_generation.sat_images.cli \
+  --scenario-dir data/sat/aslib/sc2012-application \
+  --instances-dir data/sat/instances/sc2012-application \
+  --normalize
+```
+
+Combine both:
+
+```bash
+python -m src.data_generation.sat_images.cli \
+  --scenario-dir data/sat/aslib/sc2012-application \
+  --instances-dir data/sat/instances/sc2012-application \
+  --image-size 256 \
+  --normalize
+```
+
+---
+
+### 4. Use an existing CSV (skip ASlib processing)
+
+If you already have a CSV with solver metrics, skip the ASlib step and only generate images:
+
 ```bash
 python -m src.data_generation.sat_images.cli \
   --skip-aslib \
@@ -141,7 +160,21 @@ python -m src.data_generation.sat_images.cli \
   --instances-dir data/sat/instances/sc2012-application
 ```
 
-**With instance mapping CSV:**
+---
+
+### 5. Override timeout or provide explicit instance mapping
+
+Custom timeout (seconds):
+
+```bash
+python -m src.data_generation.sat_images.cli \
+  --scenario-dir data/sat/aslib/sc2012-application \
+  --instances-dir data/sat/instances/sc2012-application \
+  --timeout 3600
+```
+
+Explicit instance mapping via CSV (`instance_id,file_path`):
+
 ```bash
 python -m src.data_generation.sat_images.cli \
   --scenario-dir data/sat/aslib/sc2012-application \
@@ -149,252 +182,69 @@ python -m src.data_generation.sat_images.cli \
   --instance-map-csv data/sat/instance_mapping.csv
 ```
 
-### Instance decompression (recommended)
+---
 
-When your ASlib instances are still compressed (`*.cnf.gz`, `*.bz2`, `*.xz`, `*.zip`, `*.lzma`), the standard flow now prefers plaintext files only. You can decompress everything recursively in two ways:
+### 6. Typical end‑to‑end run
 
-1) Python CLI (safe default, handles .zip multi-member archives)
+1. Extract ASlib scenario to `data/sat/aslib/<scenario_name>/`
+2. Extract plaintext instances to `data/sat/instances/<scenario_name>/`
+3. Optionally adjust [`config.yaml`](src/data_generation/sat_images/config.yaml)
+4. Run:
 
-- Script: [`scripts/decompress_instances.py`](scripts/decompress_instances.py:1)
-- Dry run (no changes):
-  ```bash
-  python3 scripts/decompress_instances.py data/sat/instances/sc2012-application --dry-run
-  ```
-- Decompress (keep archives):
-  ```bash
-  python3 scripts/decompress_instances.py data/sat/instances/sc2012-application
-  ```
-- Decompress and delete archives after success:
-  ```bash
-  python3 scripts/decompress_instances.py data/sat/instances/sc2012-application --delete
-  ```
-- Overwrite existing plaintext targets (use with care):
-  ```bash
-  python3 scripts/decompress_instances.py data/sat/instances/sc2012-application --overwrite
-  ```
-
-Safety notes:
-- By default, existing targets like `foo.cnf` will NOT be overwritten.
-- Use `--dry-run` first to preview actions.
-- For `.zip` files with multiple members, the script can extract the full internal tree with `--extract-zip-multi`.
-
-2) One-liner find + native tools (fast, shell-based)
-
-- Count compressed files:
-  ```bash
-  find "data/sat/instances/sc2012-application" -type f \
-    -regex '.*\.\(gz\|bz2\|xz\|zip\|lzma\)$' | wc -l
-  ```
-- Decompress .gz (keep archives; add `-d` instead of `-dk` to delete):
-  ```bash
-  find "data/sat/instances/sc2012-application" -type f -name '*.gz' -print0 \
-    | xargs -0 -I{} gzip -dk "{}"
-  ```
-- Decompress .bz2 (keep archives):
-  ```bash
-  find "data/sat/instances/sc2012-application" -type f -name '*.bz2' -print0 \
-    | xargs -0 -I{} bzip2 -dk "{}"
-  ```
-- Decompress .xz (keep archives):
-  ```bash
-  find "data/sat/instances/sc2012-application" -type f -name '*.xz' -print0 \
-    | xargs -0 -I{} unxz -k "{}"
-  ```
-- Decompress .lzma (keep archives):
-  ```bash
-  find "data/sat/instances/sc2012-application" -type f -name '*.lzma' -print0 \
-    | xargs -0 -I{} unlzma -k "{}"
-  ```
-- Extract .zip (never overwrite existing targets due to -n):
-  ```bash
-  find "data/sat/instances/sc2012-application" -type f -name '*.zip' -print0 \
-    | xargs -0 -I{} unzip -n "{}" -d "$(dirname "{}")"
-  ```
-
-Precautions:
-- The flags `-k` (keep) and `-n` (no overwrite) protect existing plaintext (e.g., `foo.cnf`). Remove `-k` (or use `-d` for gzip/bzip2) if you want to delete archives afterward.
-- For `.zip` with many files, prefer the Python script for better control.
-
-After decompression, the CLI will show diagnostics and should report few or zero compressed files remaining. If many remain, rerun with the Python script’s `--delete` to clean up.
-
-### Typical Workflow
-
-1. **Prepare ASlib scenario and instances**:
-   - Extract ASlib scenario to `data/sat/aslib/<scenario_name>/`
-   - Extract instance files to `data/sat/instances/<scenario_name>/`
-
-2. **Configure parameters** in `config.yaml` (optional)
-
-3. **Run data generation**:
    ```bash
    python -m src.data_generation.sat_images.cli \
      --scenario-dir data/sat/aslib/sc2012-application \
      --instances-dir data/sat/instances/sc2012-application
    ```
 
-4. **Check outputs**:
-   - CSV: `data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv`
-   - Images: `data/sat/datasets/sat_cnn_data_images/images/*.npy`
+5. Use the CSV and images for training, e.g.:
 
-5. **Use in training**:
    ```python
    import numpy as np
    import pandas as pd
-   
-   # Load dataset
-   df = pd.read_csv('data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv')
-   
-   # Load an image
-   image = np.load(df.iloc[0]['Image_Npy_Path'])
-   print(f"Shape: {image.shape}")  # (128, 128)
-   print(f"Winner: {df.iloc[0]['Winner_Key']}")
+
+   df = pd.read_csv("data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv")
+
+   image = np.load(df.iloc[0]["Image_Npy_Path"])
+   print(image.shape)
+   print(df.iloc[0]["Winner_Key"])
    ```
 
-## Dependencies
+---
 
-Required Python packages:
-- `numpy`: Array operations and image storage
-- `pandas`: CSV and data handling
-- `Pillow (PIL)`: Image resizing
-- `PyYAML`: Configuration file parsing
+## Optional: decompress instances
 
-Install dependencies:
+For best results, instance files under `data/sat/instances/...` should be plain text (no compression). You can use the helper script [`scripts/decompress_instances.py`](scripts/decompress_instances.py) to expand archives:
+
+Dry‑run (show what would be decompressed):
+
+```bash
+python3 scripts/decompress_instances.py data/sat/instances/sc2012-application --dry-run
+```
+
+Decompress and keep the original archives:
+
+```bash
+python3 scripts/decompress_instances.py data/sat/instances/sc2012-application
+```
+
+---
+
+## Minimal dependencies
+
+Python packages (see also [`requirements.txt`](requirements.txt)):
+
 ```bash
 pip install numpy pandas Pillow PyYAML
 ```
 
-## Module API
+There are no direct solver dependencies here (solver runs come from ASlib), but you need:
 
-You can also use the module programmatically:
+- an ASlib scenario with `algorithm_runs.arff`
+- access to the corresponding instance files on disk
 
-```python
-from src.data_generation.sat_images import (
-    load_config,
-    prepare_aslib_dataset,
-    convert_dataset_to_images
-)
+---
 
-# Load configuration
-config = load_config("src/data_generation/sat_images/config.yaml")
+## Where this data is used
 
-# Process ASlib scenario
-csv_path = prepare_aslib_dataset(
-    scenario_dir="data/sat/aslib/sc2012-application",
-    out_csv="data/sat/datasets/sat_cnn_data_images/ground_truth_aslib.csv",
-    instances_dir="data/sat/instances/sc2012-application",
-    timeout_s=5000.0
-)
-
-# Convert to images
-convert_dataset_to_images(
-    csv_path=csv_path,
-    instances_root="data/sat/instances/sc2012-application",
-    target_size=128,
-    prefix_map=config.prefix_map
-)
-```
-
-## ASlib Scenarios
-
-Common ASlib scenarios for SAT:
-
-| Scenario | Description | Typical Location |
-|----------|-------------|------------------|
-| **sc2012-application** | SAT Competition 2012 - Application track | `data/sat/aslib/sc2012-application` |
-| **sc2012-hard-combinatorial** | SAT Competition 2012 - Hard Combinatorial | `data/sat/aslib/sc2012-hard-combinatorial` |
-| **sc2012-random** | SAT Competition 2012 - Random track | `data/sat/aslib/sc2012-random` |
-
-## Troubleshooting
-
-### ARFF file not found
-```
-FileNotFoundError: algorithm_runs.arff not found
-```
-**Solution**: Ensure the scenario directory contains `algorithm_runs.arff`.
-
-### Missing columns in ARFF
-```
-ValueError: Missing required columns
-```
-**Solution**: Verify the ARFF file has columns: instance_id, algorithm, runtime, runstatus.
-
-### Instance files not found
-```
-Warning: Many instances have empty Raw_Text_Path
-```
-**Solution**: 
-- Check `--instances-dir` points to correct location
-- Verify instance files are extracted (not in .tar archives)
-- Use `--instance-map-csv` for explicit path mapping
-- Update `prefix_map` in config.yaml if needed
-
-### Sparse ARFF format error
-```
-NotImplementedError: Sparse ARFF format not supported
-```
-**Solution**: This parser only handles dense ARFF format. Convert sparse ARFF to dense format first.
-
-### Configuration file not found
-```
-FileNotFoundError: Configuration file not found
-```
-**Solution**: Ensure you're running from project root and config path is correct.
-
-## Performance Notes
-
-- **ASlib processing**: Fast (seconds to minutes depending on scenario size)
-- **Image conversion**: ~0.1-0.5 seconds per instance
-- **Total time**: Typically 5-30 minutes for a full scenario (depends on number of instances)
-
-## Customization
-
-### Adding New Prefix Mappings
-
-Edit `config.yaml` to add mappings for your instance directory structure:
-
-```yaml
-aslib:
-  prefix_map:
-    "MyPrefix": "path/to/instances/subdirectory"
-```
-
-### Changing Image Size
-
-Either in `config.yaml`:
-```yaml
-image:
-  target_size: 256
-```
-
-Or via CLI:
-```bash
-python -m src.data_generation.sat_images.cli ... --image-size 256
-```
-
-### Custom Timeout
-
-Override timeout from description.txt:
-```bash
-python -m src.data_generation.sat_images.cli ... --timeout 3600
-```
-
-## Comparison with JSSP Modules
-
-| Aspect | sat_images | jssp_images/jssp_tensors |
-|--------|------------|--------------------------|
-| **Input** | ASlib scenarios (existing benchmarks) | Generated or JSPLIB instances |
-| **Data source** | ARFF files with solver runs | MiniZinc solver execution |
-| **Instance types** | CNF, XCSP, DZN (various) | DZN (MiniZinc format) |
-| **Solver data** | Pre-computed (from ARFF) | Computed on-the-fly |
-| **Path resolution** | Complex (prefix mapping) | Simple (direct paths) |
-| **Use case** | Algorithm selection | Performance prediction |
-
-## Related Modules
-
-- **JSSP Images**: `src/data_generation/jssp_images/` - Generates JSSP datasets with grayscale images
-- **JSSP Tensors**: `src/data_generation/jssp_tensors/` - Generates JSSP datasets with 2D tensors
-- **Training**: `training/sat/train_images.py` - Uses generated SAT datasets for model training
-
-## License
-
-Part of the practica-invg project.
+The generated SAT image datasets are consumed by the training pipelines under [`src/training/sat_images`](src/training/sat_images/README.md) to train and evaluate CNN‑based models on SAT algorithm selection or performance prediction tasks.

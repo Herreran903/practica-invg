@@ -1,347 +1,226 @@
-# JSSP Tensors Data Generation
+# JSSP Tensor Data Generation
 
-This module generates datasets for Job Shop Scheduling Problems (JSSP) with 2D tensor/matrix representations. It supports two modes: **academic** (using JSPLIB benchmark instances) and **generated** (creating random balanced instances).
+This folder generates supervised datasets for Job Shop Scheduling Problems (JSSP) where each instance is encoded as a 2D tensor (matrix) of processing times and paired with solver performance metrics in a CSV file.
 
-## Overview
+It supports two modes:
 
-The JSSP Tensors generator converts JSSP problem instances into 2D matrices that can be used as input features for machine learning models. The pipeline:
+- **academic** – JSPLIB benchmark instances  
+- **generated** – randomly generated, balanced instances
 
-1. **Loads or generates JSSP instances** (academic benchmarks or random instances)
-2. **Converts instances to MiniZinc format** (.dzn files)
-3. **Runs multiple solvers** to collect performance metrics
-4. **Generates ground truth CSV** with solver runtimes and scores
-5. **Converts instances to 2D tensors** (shape: num_jobs × num_machines, stored as .npy files)
+Each instance is represented as a matrix with shape `(num_jobs, num_machines)`, optionally standardized with z‑score.
 
-## Key Difference from jssp_images
+---
 
-While `jssp_images` converts instances to fixed-size grayscale images (128×128), `jssp_tensors` creates **variable-size 2D matrices** where:
-- Shape: `(num_jobs, num_machines)` - preserves original problem dimensions
-- Each cell contains the **processing time** for that operation
-- Optional z-score standardization: `(x - mean) / std`
+## Folder contents
 
-This representation follows the **CONVJSSP style** and is more suitable for models that can handle variable input sizes.
+- [`cli.py`](src/data_generation/jssp_tensors/cli.py) – command‑line entry point for the tensor pipeline
+- [`config.yaml`](src/data_generation/jssp_tensors/config.yaml) – configuration for models, solvers, outputs, and instance generation
+- [`prepare_academic_dataset.py`](src/data_generation/jssp_tensors/prepare_academic_dataset.py) – builds the academic (JSPLIB) dataset and CSV
+- [`prepare_generated_dataset.py`](src/data_generation/jssp_tensors/prepare_generated_dataset.py) – builds the synthetic dataset and CSV
+- [`tensor_converter.py`](src/data_generation/jssp_tensors/tensor_converter.py) – `.dzn → 2D tensor .npy` conversion and CSV update
+- [`__init__.py`](src/data_generation/jssp_tensors/__init__.py) – module exports
 
-## Directory Structure
+Instance generation and MiniZinc execution are reused from the image pipeline in [`src/data_generation/jssp_images`](src/data_generation/jssp_images/README.md).
 
-```
-src/data_generation/jssp_tensors/
-├── config.yaml                      # Central configuration file
-├── config_loader.py                 # Configuration management utilities
-├── prepare_academic_dataset.py     # Academic mode pipeline (JSPLIB)
-├── prepare_generated_dataset.py    # Generated mode pipeline (random instances)
-├── tensor_converter.py             # .dzn to tensor conversion
-├── cli.py                          # Command-line interface
-├── __init__.py                     # Module exports
-└── README.md                       # This file
-```
+---
 
-**Note:** This module reuses `jssp_instance_utils.py` and `minizinc_solver.py` from `jssp_images` since the instance handling and solver logic is identical.
+## Inputs
 
-## Input Requirements
+Configured in [`config.yaml`](src/data_generation/jssp_tensors/config.yaml):
 
-### Academic Mode
-- **JSPLIB benchmark instances**: Automatically loaded via `job-shop-lib`
-- **MiniZinc model**: `models/jssp/model.mzn` (CP model)
-- **Solvers**: At least one MiniZinc solver installed (e.g., Gecode, Chuffed)
+- **MiniZinc models**
+  - CP model: [`models/jssp/model.mzn`](models/jssp/model.mzn)
+  - optional MIP model: [`models/jssp/model_linear.mzn`](models/jssp/model_linear.mzn)
+- **Academic mode**
+  - JSPLIB instances via the `job-shop-lib` Python package
+  - instance list, time limit, and penalty factor under `academic.*`
+- **Generated mode**
+  - grid of `(n_jobs, n_machines, n_instances)` in `generated.generation_cases`
+  - time limits and random seeds in `generated.*`
+  - solver set in `solver_candidates`
+- **Tensor options**
+  - `tensor.standardize: true|false` to enable or disable per‑instance z‑score standardization
 
-### Generated Mode
-- **MiniZinc models**: 
-  - CP model: `models/jssp/model.mzn`
-  - MIP model (optional): `models/jssp/model_linear.mzn`
-- **Solvers**: Multiple solvers for benchmarking (CP and/or MIP)
+MiniZinc must be installed and at least one solver must be available via `minizinc --solvers`.
 
-## Output Structure
+---
 
-Both modes produce the following outputs in `data/jssp/datasets/`:
+## Outputs
 
-```
-jsp_cnn_data_acad_tensors/  (or jssp_cnn_data_tensors/)
-├── *.dzn                           # Instance files in MiniZinc format
-├── ground_truth_*.csv              # Ground truth with solver metrics
-└── images/
-    └── *_tensor.npy                # 2D tensors (variable size, float32)
-```
+All outputs are written under `data/jssp/datasets/` (relative to the project root).
 
-### Tensor Format
+Typical layout:
 
-Tensors are stored as NumPy arrays (.npy files):
-- **Shape**: `(num_jobs, num_machines)` - varies per instance
-- **Data type**: float32
-- **Content**: Processing times for each operation
-- **Normalization**: Optional z-score (mean=0, std=1)
-
-Example:
-```python
-import numpy as np
-
-# Load a tensor
-tensor = np.load('GEN_6x6_1_tensor.npy')
-print(tensor.shape)  # (6, 6) for a 6×6 instance
-print(tensor.dtype)  # float32
+```text
+data/jssp/datasets/
+├── jsp_cnn_data_acad_tensors/      # academic mode
+│   ├── *.dzn
+│   ├── ground_truth_jsp_academic.csv
+│   └── images/
+│       └── *_tensor.npy            # 2D tensors
+└── jssp_cnn_data_tensors/          # generated mode
+    ├── *.dzn
+    ├── ground_truth_jsp_generated_dataset.csv
+    └── images/
+        └── *_tensor.npy
 ```
 
-### CSV Columns
+Tensor format:
 
-**Academic Mode:**
-- `Instance_Name`: Name of the benchmark instance
-- `Raw_Text_Path`: Path to the .dzn file
-- `N_Jobs`, `N_Machines`: Instance dimensions
-- `Best_Makespan_Found`: Best makespan across all solvers
-- `Optimum`: Known optimal makespan
-- `{SOLVER}_Runtime_s`: Runtime for each solver
-- `{SOLVER}_Score_S_rel`: Relative performance score for each solver
-- `Tensor_Npy_Path`: Path to the tensor .npy file
-- `Image_Npy_Path`: Alias of `Tensor_Npy_Path`, added so that training pipelines that expect an `Image_Npy_Path` column can directly reuse this CSV
+- type: NumPy array saved as `.npy`
+- shape: `(num_jobs, num_machines)` (varies per instance)
+- dtype: `float32`
+- content: processing times for each operation
+- optional: z‑score standardization (mean ≈ 0, std ≈ 1) applied per instance
 
-**Generated Mode:**
-- `Instance_Name`: Generated instance name (e.g., GEN_6x6_1)
-- `Raw_Text_Path`: Path to the .dzn file
-- `N_Jobs`, `N_Machines`: Instance dimensions
-- `Time_Limit_s`: Time limit used for this run
-- `Seed`: Random seed used
-- `Winner_Key`: Best performing solver for this configuration
-- `{SOLVER}_Runtime_s`: Runtime for each solver
-- `{SOLVER}_Makespan`: Makespan found by each solver
-- `{SOLVER}_Wall_s`: Wall-clock time for each solver
-- `Tensor_Npy_Path`: Path to the tensor .npy file
-- `Image_Npy_Path`: Alias of `Tensor_Npy_Path`, added so that training pipelines that expect an `Image_Npy_Path` column can directly reuse this CSV
+During conversion, [`tensor_converter.py`](src/data_generation/jssp_tensors/tensor_converter.py) also updates the CSV with:
 
-## Configuration
+- `Tensor_Npy_Path` – tensor file path
+- `Image_Npy_Path` – alias pointing to the same tensor file so training code can reuse the CSV
 
-All parameters are centralized in [`config.yaml`](config.yaml). Key sections:
+---
 
-### Models
-```yaml
-models:
-  cp_model: "models/jssp/model.mzn"
-  mip_model: "models/jssp/model_linear.mzn"
+## CLI usage (from project root)
+
+Run the full pipeline via [`cli.py`](src/data_generation/jssp_tensors/cli.py):
+
+```bash
+python -m src.data_generation.jssp_tensors.cli --mode <academic|generated> [options]
 ```
 
-### Output Directories
-```yaml
-output:
-  base_dir: "data/jssp/datasets"
-  academic_dir: "jsp_cnn_data_acad_tensors"
-  generated_dir: "jssp_cnn_data_tensors"
-```
+### 1. Basic runs
 
-### Tensor Parameters
-```yaml
-tensor:
-  standardize: true  # Apply z-score normalization
-```
+Academic JSPLIB dataset with the default configuration:
 
-### Academic Mode
-```yaml
-academic:
-  instances: ["ft06", "ft10", "la01", "abz5"]
-  time_limit_ms: 60000
-  penalty_factor_k: 10.0
-```
-
-### Generated Mode
-```yaml
-generated:
-  time_limits_ms: [5000, 30000, 60000]
-  random_seeds: [1, 2, 3]
-  generation_cases:
-    - [4, 4, 5]   # 5 instances of 4×4
-    - [6, 6, 5]   # 5 instances of 6×6
-    - [8, 8, 5]   # 5 instances of 8×8
-    - [10, 10, 5] # 5 instances of 10×10
-```
-
-## Usage
-
-### From Project Root
-
-**Academic Mode (JSPLIB benchmarks):**
 ```bash
 python -m src.data_generation.jssp_tensors.cli --mode academic
 ```
 
-**Generated Mode (random instances):**
+Generated dataset with the default configuration:
+
 ```bash
 python -m src.data_generation.jssp_tensors.cli --mode generated
 ```
 
-**With custom configuration:**
+Both commands:
+
+1. build the CSV dataset (running MiniZinc solvers)
+2. convert `.dzn` instances to 2D tensor `.npy` files
+
+---
+
+### 2. Use a custom configuration file
+
+Select a specific YAML file, for example to change instance sizes, time limits, or solvers:
+
 ```bash
-python -m src.data_generation.jssp_tensors.cli --mode academic --config path/to/config.yaml
+python -m src.data_generation.jssp_tensors.cli \
+  --mode academic \
+  --config src/data_generation/jssp_tensors/config.yaml
 ```
 
-**Disable standardization:**
 ```bash
-python -m src.data_generation.jssp_tensors.cli --mode generated --no-standardize
+python -m src.data_generation.jssp_tensors.cli \
+  --mode generated \
+  --config path/to/custom_jssp_tensors_config.yaml
 ```
 
-**Skip solver execution (only convert existing dataset):**
+---
+
+### 3. Control standardization (z‑score)
+
+Standardization is enabled by default (`tensor.standardize: true` in [`config.yaml`](src/data_generation/jssp_tensors/config.yaml)). Disable it from the CLI:
+
+Academic, without standardization:
+
 ```bash
-python -m src.data_generation.jssp_tensors.cli --mode academic --skip-solvers --csv data/jssp/datasets/jsp_cnn_data_acad_tensors/ground_truth_jsp_academic.csv
+python -m src.data_generation.jssp_tensors.cli \
+  --mode academic \
+  --no-standardize
 ```
 
-### Typical Workflow
+Generated, without standardization:
 
-1. **Configure parameters** in `config.yaml`
-2. **Run data generation**:
+```bash
+python -m src.data_generation.jssp_tensors.cli \
+  --mode generated \
+  --no-standardize
+```
+
+---
+
+### 4. Re‑encode an existing CSV (skip solvers)
+
+If you already have a CSV with solver metrics and `.dzn` files, you can regenerate tensors without running MiniZinc again by using `--skip-solvers` and `--csv`.
+
+Generated dataset:
+
+```bash
+python -m src.data_generation.jssp_tensors.cli \
+  --mode generated \
+  --skip-solvers \
+  --csv data/jssp/datasets/jssp_cnn_data_tensors/ground_truth_jsp_generated_dataset.csv
+```
+
+Academic dataset:
+
+```bash
+python -m src.data_generation.jssp_tensors.cli \
+  --mode academic \
+  --skip-solvers \
+  --csv data/jssp/datasets/jsp_cnn_data_acad_tensors/ground_truth_jsp_academic.csv
+```
+
+In both cases the script:
+
+1. reads the CSV
+2. locates the `.dzn` instance files
+3. creates/overwrites `images/*_tensor.npy` for each row and updates the CSV paths
+
+---
+
+### 5. Typical end‑to‑end run
+
+1. Adjust [`config.yaml`](src/data_generation/jssp_tensors/config.yaml) if needed (models, solvers, instance sizes, time limits).
+2. Generate the dataset, for example in generated mode:
+
    ```bash
    python -m src.data_generation.jssp_tensors.cli --mode generated
    ```
-3. **Check outputs**:
-   - CSV: `data/jssp/datasets/jssp_cnn_data_tensors/ground_truth_jsp_generated_dataset.csv`
-   - Tensors: `data/jssp/datasets/jssp_cnn_data_tensors/images/*.npy`
-4. **Use in training**:
+
+3. Use the CSV and tensors for training, for example:
+
    ```python
    import numpy as np
    import pandas as pd
-   
-   # Load dataset
-   df = pd.read_csv('data/jssp/datasets/jssp_cnn_data_tensors/ground_truth_jsp_generated_dataset.csv')
-   
-   # Load a tensor
-   tensor = np.load(df.iloc[0]['Tensor_Npy_Path'])
-   print(f"Shape: {tensor.shape}")  # e.g., (6, 6)
-   print(f"Mean: {tensor.mean():.3f}")  # ~0 if standardized
-   print(f"Std: {tensor.std():.3f}")    # ~1 if standardized
+
+   df = pd.read_csv(
+       "data/jssp/datasets/jssp_cnn_data_tensors/ground_truth_jsp_generated_dataset.csv"
+   )
+
+   tensor = np.load(df.iloc[0]["Tensor_Npy_Path"])
+   print(tensor.shape)
    ```
 
-## Dependencies
+---
 
-Required Python packages:
-- `numpy`: Array operations and tensor storage
-- `pandas`: CSV handling
-- `PyYAML`: Configuration file parsing
-- `job-shop-lib`: JSSP instance loading and generation
+## Minimal dependencies
 
-External dependencies:
-- **MiniZinc**: Constraint programming solver framework
-- **Solvers**: At least one solver (Gecode, Chuffed, CP-SAT, CBC, SCIP, HiGHS, CPLEX, or Gurobi)
+Python packages (see also [`requirements.txt`](requirements.txt)):
 
-Install Python dependencies:
 ```bash
-pip install numpy pandas PyYAML job-shop-lib
+pip install numpy pandas PyYAML job-shop-lib minizinc
 ```
 
-Install MiniZinc:
-- Download from: https://www.minizinc.org/
-- Ensure `minizinc` is in your PATH
+System requirements:
 
-## Module API
+- MiniZinc command‑line tools installed (bundle or package manager)
+- at least one solver available (e.g. Gecode, Chuffed, CBC, SCIP, HiGHS, or others configured in [`config.yaml`](src/data_generation/jssp_tensors/config.yaml))
 
-You can also use the module programmatically:
+Unavailable solvers are handled gracefully at CSV level (their metrics are marked as `NA`/`inf` and the pipeline continues).
 
-```python
-from src.data_generation.jssp_tensors import (
-    load_config,
-    prepare_academic_dataset,
-    prepare_generated_dataset,
-    convert_dataset_to_tensors
-)
+---
 
-# Load configuration
-config = load_config("src/data_generation/jssp_tensors/config.yaml")
+## Where this data is used
 
-# Generate academic dataset
-csv_path = prepare_academic_dataset(config)
-
-# Convert to tensors
-convert_dataset_to_tensors(csv_path, standardize=True)
-```
-
-## Comparison: Tensors vs Images
-
-| Aspect | jssp_tensors | jssp_images |
-|--------|--------------|-------------|
-| **Output shape** | Variable `(n_jobs, n_machines)` | Fixed `(128, 128)` |
-| **Content** | Processing times (standardized) | Text encoding of concatenated MiniZinc model (`.mzn`) and instance (`.dzn`) |
-| **Representation** | Direct problem encoding | Indirect text encoding |
-| **Model compatibility** | Requires variable-size support | Works with fixed-size CNNs |
-| **Information preservation** | Exact problem structure | Lossy compression |
-| **Use case** | Models handling variable inputs | Standard CNN architectures |
-
-## Troubleshooting
-
-### MiniZinc not found
-```
-ERROR: MiniZinc not found in PATH
-```
-**Solution**: Install MiniZinc and add it to your system PATH.
-
-### No solvers available
-```
-ERROR: No usable solvers found
-```
-**Solution**: Install at least one MiniZinc solver (e.g., `minizinc --install gecode`).
-
-### job-shop-lib import error
-```
-ImportError: Cannot import job_shop_lib
-```
-**Solution**: Install the library: `pip install job-shop-lib`
-
-### Standardization error
-```
-ValueError: Standard deviation is zero
-```
-**Solution**: This occurs when all processing times are identical. Either:
-- Use `--no-standardize` flag
-- Check your instance generation parameters
-
-### Configuration file not found
-```
-FileNotFoundError: Configuration file not found
-```
-**Solution**: Ensure you're running from the project root and the config path is correct.
-
-## Performance Notes
-
-- **Academic mode**: Typically takes 1-5 minutes per instance (depends on solvers and time limits)
-- **Generated mode**: Can take 30+ minutes for large configurations (multiple instances × time limits × seeds × solvers)
-- **Tensor conversion**: Very fast (~0.1 seconds per instance)
-
-## Customization
-
-### Adding New Solvers
-
-Edit `config.yaml` and add to `solver_candidates`:
-
-```yaml
-solver_candidates:
-  - solver_id: "your-solver"
-    key: "YOUR_SOLVER_KEY"
-    type: "cp"  # or "mip"
-    options: {}  # use the solver's default configuration (no custom heuristics)
-```
-
-### Changing Instance Sizes
-
-Edit `config.yaml` under `generated.generation_cases`:
-
-```yaml
-generation_cases:
-  - [15, 15, 10]  # 10 instances of 15×15
-  - [20, 20, 5]   # 5 instances of 20×20
-```
-
-### Disabling Standardization
-
-Either in `config.yaml`:
-```yaml
-tensor:
-  standardize: false
-```
-
-Or via CLI:
-```bash
-python -m src.data_generation.jssp_tensors.cli --mode academic --no-standardize
-```
-
-## Related Modules
-
-- **JSSP Images**: `src/data_generation/jssp_images/` - Generates fixed-size grayscale images
-- **SAT Images**: `src/data_generation/sat_images/` - Similar pipeline for SAT problems
-- **Training**: `training/jssp/train_tensor.py` - Uses the generated tensor datasets for model training
-
-## License
-
-Part of the practica-invg project.
+The generated JSSP tensor datasets are consumed by the training pipelines under [`src/training/jssp_tensors`](src/training/jssp_tensors/README.md) to train and evaluate models that operate directly on tensor (matrix) representations of JSSP instances.
